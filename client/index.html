@@ -17,7 +17,7 @@
       pre {
         text-align: center;
         margin: 0;
-        color: #00ff00;
+        color: #808080;
       }
 
       .mode-display {
@@ -34,7 +34,6 @@
       }
 
       .user-item {
-        display: flex;
         align-items: center;
         margin-bottom: 0.2rem;
         font-size: 14px;
@@ -48,10 +47,10 @@
       .user-name {
         color: #00ff00;
         min-width: 120px;
+        text-align: right;
       }
 
       .current-user .user-name {
-        color: #ffffff;
         font-weight: bold;
       }
 
@@ -216,7 +215,7 @@
 
            const userName = document.createElement('div')
            userName.className = 'user-name'
-           userName.textContent = userId === currentUserId ? `${userId} (Me)` : userId
+           userName.textContent = userId === currentUserId ? ` (Me)${userId}` : userId
 
            userItem.appendChild(userName)
            userListElement.appendChild(userItem)
