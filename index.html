@@ -353,8 +353,8 @@
        
        // Web Audio API setup
        let audioContext = null
-       let oscillator = null
-       let gainNode = null
+       let userOscillators = {} // Per-user oscillators
+       let mainGainNode = null
        
        // User morse code visualizer setup
        let userCanvases = {} // Per-user canvases
@@ -393,8 +393,8 @@
        function initAudioContext() {
          if (!audioContext) {
            audioContext = new (window.AudioContext || window.webkitAudioContext)()
-           gainNode = audioContext.createGain()
-           gainNode.connect(audioContext.destination)
+           mainGainNode = audioContext.createGain()
+           mainGainNode.connect(audioContext.destination)
          }
        }
        
@@ -409,42 +409,51 @@
        }
        
        function startAudio(userId = currentUserId) {
-         if (!oscillator) {
+         if (!userOscillators[userId]) {
            initAudioContext()
            if (audioContext.state === 'suspended') {
              audioContext.resume()
            }
 
-           // Reset gain to full volume
-           gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
+           // Create individual gain node for this user
+           const userGainNode = audioContext.createGain()
+           const volume = userId === currentUserId ? 0.3 : 0.2
+           userGainNode.gain.setValueAtTime(volume, audioContext.currentTime)
+           userGainNode.connect(mainGainNode)
 
-           oscillator = audioContext.createOscillator()
+           // Create oscillator for this user
+           const oscillator = audioContext.createOscillator()
            oscillator.type = 'sine'
            const frequency = getUserFrequency(userId)
            oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-           oscillator.connect(gainNode)
+           oscillator.connect(userGainNode)
            oscillator.start()
+
+           // Store both oscillator and gain node
+           userOscillators[userId] = { oscillator, gainNode: userGainNode }
          }
        }
        
-       function stopAudio() {
-         if (oscillator) {
+       function stopAudio(userId = currentUserId) {
+         const userAudio = userOscillators[userId]
+         if (userAudio) {
            try {
              // Quick volume fade-out to prevent clicking
-             gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
-             gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01) // 10ms fade
-             
+             userAudio.gainNode.gain.setValueAtTime(userAudio.gainNode.gain.value, audioContext.currentTime)
+             userAudio.gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01) // 10ms fade
+
              // Stop oscillator after fade completes
              setTimeout(() => {
-               if (oscillator) {
-                 oscillator.stop()
-                 oscillator.disconnect()
-                 oscillator = null
+               if (userOscillators[userId]) {
+                 userAudio.oscillator.stop()
+                 userAudio.oscillator.disconnect()
+                 userAudio.gainNode.disconnect()
+                 delete userOscillators[userId]
                }
              }, 15) // Slightly longer than fade duration
            } catch (e) {
              // Oscillator might already be stopped
-             oscillator = null
+             delete userOscillators[userId]
            }
          }
        }
@@ -458,21 +467,7 @@
          updateUserMorse(userId, true)
 
          // Audio effects for remote users (no background color change)
-         if (!oscillator) {
-           initAudioContext()
-           if (audioContext.state === 'suspended') {
-             audioContext.resume()
-           }
-
-           gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
-
-           oscillator = audioContext.createOscillator()
-           oscillator.type = 'sine'
-           const frequency = getUserFrequency(userId)
-           oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
-           oscillator.connect(gainNode)
-           oscillator.start()
-         }
+         startAudio(userId)
        }
 
        function handleRemoteSpaceRelease(userId) {
@@ -482,22 +477,7 @@
          updateUserMorse(userId, false)
 
          // Stop remote audio effects
-         if (oscillator) {
-           try {
-             gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
-             gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
-
-             setTimeout(() => {
-               if (oscillator) {
-                 oscillator.stop()
-                 oscillator.disconnect()
-                 oscillator = null
-               }
-             }, 15)
-           } catch (e) {
-             oscillator = null
-           }
-         }
+         stopAudio(userId)
        }
 
 
@@ -565,7 +545,7 @@
 
          // Effects: background + audio
          startBackgroundColor()
-         startAudio()
+         startAudio(currentUserId)
        }
 
        function handleSpaceRelease() {
@@ -579,7 +559,7 @@
 
          // Stop all effects
          stopBackgroundColor()
-         stopAudio()
+         stopAudio(currentUserId)
        }
     </script>
 </body>
