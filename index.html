@@ -520,6 +520,40 @@
         }
       })
 
+      // Mobile/Mouse support: allow clicking anywhere on screen
+      let isMousePressed = false
+
+      // Mouse events for desktop
+      document.addEventListener('mousedown', function(event) {
+        if (isMousePressed) return // Prevent double-press
+        isMousePressed = true
+        event.preventDefault()
+        handleSpacePress()
+      })
+
+      document.addEventListener('mouseup', function(event) {
+        if (!isMousePressed) return
+        isMousePressed = false
+        event.preventDefault()
+        handleSpaceRelease()
+      })
+
+      // Touch events for mobile
+      document.addEventListener('touchstart', function(event) {
+        event.preventDefault()
+        handleSpacePress()
+      })
+
+      document.addEventListener('touchend', function(event) {
+        event.preventDefault()
+        handleSpaceRelease()
+      })
+
+      document.addEventListener('touchcancel', function(event) {
+        event.preventDefault()
+        handleSpaceRelease()
+      })
+
        function handleSpacePress() {
          // Send WebSocket message for space press
          sendWebSocketMessage(1)
