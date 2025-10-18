@@ -24,7 +24,7 @@ The server will run on `http://localhost:8000`
 
 ### 2. Open the Client
 
-Open `client/index.html` in your web browser. Each browser window/tab will be assigned a unique username.
+Open `index.html` in your web browser. Each browser window/tab will be assigned a unique username.
 
 ### 3. Use the Interface
 

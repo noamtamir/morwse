@@ -9,7 +9,7 @@ Morwse is a real-time multi-user space bar interaction tool with WebSocket commu
 ## Architecture
 
 ### Client-Server Structure
-- **Client**: Single HTML file (`client/index.html`) containing vanilla JavaScript
+- **Client**: Single HTML file (`index.html`) containing vanilla JavaScript
 - **Server**: FastAPI WebSocket server (`server/main.py`) for user management and event broadcasting
 
 ### Communication Protocol
@@ -26,7 +26,7 @@ Morwse is a real-time multi-user space bar interaction tool with WebSocket commu
 - JSON message protocol for `user_info`, `user_list`, and `space_event` types
 - Detailed logging with usernames and timestamps
 
-**Client (`client/index.html`)**:
+**Client (`index.html`)**:
 - User identification system with `currentUserId` and `connectedUsers` tracking
 - Per-user canvas-based morse code visualization (one horizontal row per user)
 - Hash-based frequency generation (220Hz-880Hz range) for unique user audio tones
@@ -43,7 +43,7 @@ uv run uvicorn main:app --reload
 Server runs on `http://localhost:8000`
 
 ### Open the Client
-Open `client/index.html` directly in a web browser. Each window gets a unique username.
+Open `index.html` directly in a web browser. Each window gets a unique username.
 
 ## Dependencies
 
@@ -53,7 +53,7 @@ Open `client/index.html` directly in a web browser. Each window gets a unique us
 ## Testing the Application
 
 1. Start the server
-2. Open multiple browser tabs/windows with `client/index.html`
+2. Open multiple browser tabs/windows with `index.html`
 3. Each tab gets a unique username shown in top-right
 4. Press space bar in any tab - morse visualization appears on that user's row in all tabs
 5. Each user has distinct audio frequency based on username hash
