@@ -122,7 +122,7 @@
        // Initialize WebSocket connection
        function initWebSocket() {
          try {
-           websocket = new WebSocket('ws://localhost:8000/ws')
+           websocket = new WebSocket('wss://morwse-production.up.railway.app:8000/ws')
            
            websocket.onopen = function(event) {
              websocketConnected = true
