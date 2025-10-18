@@ -11,7 +11,6 @@
         font-family: 'Courier New', monospace;
         margin: 0;
         padding: 1rem;
-        min-height: 100vh;
       }
 
       pre {
@@ -52,6 +51,7 @@
 
       .current-user .user-name {
         font-weight: bold;
+        color: #ffffff;
       }
 
       .user-morse-canvas {
@@ -115,6 +115,7 @@
        let connectedUsers = []
        let userMorseStates = {} // Track morse state for each user
        let userMorseTimeouts = {} // Track timeouts for morse bars
+       let userFrequencies = {} // Track audio frequency for each user
        
        // Initialize WebSocket connection
        function initWebSocket() {
@@ -348,6 +349,28 @@
        let userCanvases = {} // Per-user canvases
        let userMorseSegments = {} // Per-user morse segments
        let userDrawingStates = {} // Per-user drawing states
+
+       // Generate unique frequency for a user based on their username
+       function getUserFrequency(userId) {
+         if (userFrequencies[userId]) {
+           return userFrequencies[userId]
+         }
+
+         // Simple hash function to convert string to number
+         let hash = 0
+         for (let i = 0; i < userId.length; i++) {
+           const char = userId.charCodeAt(i)
+           hash = ((hash << 5) - hash) + char
+           hash = hash & hash // Convert to 32bit integer
+         }
+
+         // Convert hash to frequency between 220Hz and 880Hz
+         const frequency = 220 + (Math.abs(hash) % 661) // 661 = 880 - 220 + 1
+         userFrequencies[userId] = frequency
+
+         console.log(`Generated frequency for ${userId}: ${frequency}Hz`)
+         return frequency
+       }
        
        // Initialize WebSocket on page load
        document.addEventListener('DOMContentLoaded', function() {
@@ -373,19 +396,20 @@
          document.body.style.backgroundColor = ''
        }
        
-       function startAudio() {
+       function startAudio(userId = currentUserId) {
          if (!oscillator) {
            initAudioContext()
            if (audioContext.state === 'suspended') {
              audioContext.resume()
            }
-           
+
            // Reset gain to full volume
            gainNode.gain.setValueAtTime(0.3, audioContext.currentTime)
-           
+
            oscillator = audioContext.createOscillator()
            oscillator.type = 'sine'
-           oscillator.frequency.setValueAtTime(440, audioContext.currentTime) // A4 note
+           const frequency = getUserFrequency(userId)
+           oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
            oscillator.connect(gainNode)
            oscillator.start()
          }
@@ -432,7 +456,8 @@
 
            oscillator = audioContext.createOscillator()
            oscillator.type = 'sine'
-           oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
+           const frequency = getUserFrequency(userId)
+           oscillator.frequency.setValueAtTime(frequency, audioContext.currentTime)
            oscillator.connect(gainNode)
            oscillator.start()
          }
