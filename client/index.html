@@ -26,24 +26,36 @@
         right: 1rem;
       }
 
-      .center-circle {
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 100px;
-        height: 100px;
-        background-color: #006600;
-        border-radius: 50%;
-        z-index: 1000;
-        display: none;
-      }
+       .center-circle {
+         position: fixed;
+         top: 50%;
+         left: 50%;
+         transform: translate(-50%, -50%);
+         width: 100px;
+         height: 100px;
+         background-color: #006600;
+         border-radius: 50%;
+         z-index: 1000;
+         display: none;
+       }
+       
+       .morse-canvas {
+         position: fixed;
+         top: 50%;
+         left: 0;
+         width: 100%;
+         height: 4px;
+         transform: translateY(-50%);
+         z-index: 1000;
+         pointer-events: none;
+       }
     </style>
   </head>
   <body>
     <code><pre class="mode-display" id="modeDisplay">1</pre></code>
     <code><pre>[ SPACE ] beep | [ 1 - 4 ] modes</pre></code>
     <div class="center-circle" id="centerCircle"></div>
+    <canvas class="morse-canvas" id="morseCanvas"></canvas>
 
     <script>
        let currentMode = 1
@@ -54,12 +66,80 @@
        let oscillator = null
        let gainNode = null
        
+       // Morse code visualizer setup (canvas-based)
+       let morseCanvas = null
+       let morseCtx = null
+       let morseSegments = [] // Array of {x, width, isActive}
+       let morseAnimationId = null
+       let isDrawingLine = false
+       
        // Initialize audio context (will be created on first user interaction)
        function initAudioContext() {
          if (!audioContext) {
            audioContext = new (window.AudioContext || window.webkitAudioContext)()
            gainNode = audioContext.createGain()
            gainNode.connect(audioContext.destination)
+         }
+       }
+       
+       // Initialize morse canvas
+       function initMorseCanvas() {
+         if (!morseCanvas) {
+           morseCanvas = document.getElementById('morseCanvas')
+           morseCtx = morseCanvas.getContext('2d')
+           
+           // Set canvas size to match screen
+           morseCanvas.width = window.innerWidth
+           morseCanvas.height = 4
+           
+           // Set drawing style
+           morseCtx.fillStyle = '#00ff00'
+         }
+       }
+       
+       // Morse code visualizer animation (canvas-based)
+       function animateMorseCanvas() {
+         // Clear canvas
+         morseCtx.clearRect(0, 0, morseCanvas.width, morseCanvas.height)
+         
+         // Move all segments left and draw them
+         for (let i = morseSegments.length - 1; i >= 0; i--) {
+           const segment = morseSegments[i]
+           segment.x -= 2 // Move 2px left per frame
+           
+           // Remove segments that are completely off screen
+           if (segment.x + segment.width < 0) {
+             morseSegments.splice(i, 1)
+             continue
+           }
+           
+           // Draw the segment
+           morseCtx.fillRect(segment.x, 1, segment.width, 2)
+         }
+         
+         // If we're currently drawing a line, extend it
+         if (isDrawingLine) {
+           const currentSegment = morseSegments[morseSegments.length - 1]
+           if (currentSegment) {
+             currentSegment.width += 1
+             // Don't let it go off the right edge
+             if (currentSegment.x + currentSegment.width > window.innerWidth) {
+               currentSegment.width = window.innerWidth - currentSegment.x
+             }
+           }
+         }
+         
+         // Continue animation if there are segments or if we're drawing
+         if (morseSegments.length > 0 || isDrawingLine) {
+           morseAnimationId = requestAnimationFrame(animateMorseCanvas)
+         }
+       }
+       
+       // Start morse animation
+       function startMorseAnimation() {
+         initMorseCanvas()
+         if (!morseAnimationId) {
+           morseAnimationId = requestAnimationFrame(animateMorseCanvas)
          }
        }
 
@@ -114,6 +194,21 @@
              oscillator.connect(gainNode)
              oscillator.start()
            }
+         } else if (currentMode === 4) {
+           // Mode 4: Morse code visualizer - start drawing line
+           if (!isDrawingLine) {
+             isDrawingLine = true
+             
+             // Create a new segment at the right side
+             const newSegment = {
+               x: window.innerWidth - 20,
+               width: 2,
+               isActive: true
+             }
+             
+             morseSegments.push(newSegment)
+             startMorseAnimation()
+           }
          }
        }
 
@@ -147,6 +242,11 @@
                // Oscillator might already be stopped
                oscillator = null
              }
+           }
+         } else if (currentMode === 4) {
+           // Mode 4: Morse code visualizer - stop drawing line
+           if (isDrawingLine) {
+             isDrawingLine = false
            }
          }
        }
