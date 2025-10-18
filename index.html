@@ -276,58 +276,67 @@
            }
 
            userMorseSegments[userId].push(newSegment)
-           startUserMorseAnimation(userId)
+           startGlobalMorseAnimation()
          } else {
            userMorseStates[userId] = false
            userDrawingStates[userId] = false
          }
        }
 
-       // Start morse animation for a specific user
-       function startUserMorseAnimation(userId) {
-         if (!userCanvases[userId]) return
+       // Global animation loop for all users
+       function startGlobalMorseAnimation() {
+         if (globalAnimationId) return // Already running
 
          function animate() {
-           const { canvas, ctx } = userCanvases[userId]
-           const segments = userMorseSegments[userId]
+           let hasActiveSegments = false
 
-           // Clear canvas
-           ctx.clearRect(0, 0, canvas.width, canvas.height)
+           // Animate all users
+           Object.keys(userCanvases).forEach(userId => {
+             const { canvas, ctx } = userCanvases[userId]
+             const segments = userMorseSegments[userId]
 
-           // Move all segments left and draw them
-           for (let i = segments.length - 1; i >= 0; i--) {
-             const segment = segments[i]
-             segment.x -= 2 // Move 2px left per frame
+             // Clear canvas
+             ctx.clearRect(0, 0, canvas.width, canvas.height)
 
-             // Remove segments that are completely off screen
-             if (segment.x + segment.width < 0) {
-               segments.splice(i, 1)
-               continue
-             }
+             // Move all segments left and draw them
+             for (let i = segments.length - 1; i >= 0; i--) {
+               const segment = segments[i]
+               segment.x -= 2 // Move 2px left per frame
 
-             // Draw the segment
-             ctx.fillRect(segment.x, 1, segment.width, 2)
-           }
-
-           // If we're currently drawing a line, extend it
-           if (userDrawingStates[userId]) {
-             const currentSegment = segments[segments.length - 1]
-             if (currentSegment) {
-               currentSegment.width += 1
-               // Don't let it go off the right edge
-               if (currentSegment.x + currentSegment.width > window.innerWidth) {
-                 currentSegment.width = window.innerWidth - currentSegment.x
+               // Remove segments that are completely off screen
+               if (segment.x + segment.width < 0) {
+                 segments.splice(i, 1)
+                 continue
                }
-             }
-           }
 
-           // Continue animation if there are segments or if we're drawing
-           if (segments.length > 0 || userDrawingStates[userId]) {
-             requestAnimationFrame(animate)
+               // Draw the segment
+               ctx.fillRect(segment.x, 1, segment.width, 2)
+               hasActiveSegments = true
+             }
+
+             // If we're currently drawing a line, extend it
+             if (userDrawingStates[userId]) {
+               const currentSegment = segments[segments.length - 1]
+               if (currentSegment) {
+                 currentSegment.width += 1
+                 // Don't let it go off the right edge
+                 if (currentSegment.x + currentSegment.width > window.innerWidth) {
+                   currentSegment.width = window.innerWidth - currentSegment.x
+                 }
+               }
+               hasActiveSegments = true
+             }
+           })
+
+           // Continue animation if any user has segments or is drawing
+           if (hasActiveSegments || Object.values(userDrawingStates).some(state => state)) {
+             globalAnimationId = requestAnimationFrame(animate)
+           } else {
+             globalAnimationId = null
            }
          }
 
-         animate()
+         globalAnimationId = requestAnimationFrame(animate)
        }
 
        // Send WebSocket message as binary boolean
@@ -351,6 +360,7 @@
        let userCanvases = {} // Per-user canvases
        let userMorseSegments = {} // Per-user morse segments
        let userDrawingStates = {} // Per-user drawing states
+       let globalAnimationId = null // Single animation loop for all users
 
        // Generate unique frequency for a user based on their username
        function getUserFrequency(userId) {
