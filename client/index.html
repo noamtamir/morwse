@@ -61,6 +61,42 @@
        let currentMode = 1
        const modeDisplay = document.getElementById('modeDisplay')
        
+       // WebSocket connection
+       let websocket = null
+       let websocketConnected = false
+       
+       // Initialize WebSocket connection
+       function initWebSocket() {
+         try {
+           websocket = new WebSocket('ws://localhost:8000/ws')
+           
+           websocket.onopen = function(event) {
+             websocketConnected = true
+             console.log('WebSocket connected')
+           }
+           
+           websocket.onclose = function(event) {
+             websocketConnected = false
+             console.log('WebSocket disconnected')
+           }
+           
+           websocket.onerror = function(error) {
+             websocketConnected = false
+             console.log('WebSocket error:', error)
+           }
+         } catch (error) {
+           console.log('Failed to create WebSocket connection:', error)
+         }
+       }
+       
+       // Send WebSocket message as binary boolean
+       function sendWebSocketMessage(value) {
+         if (websocketConnected && websocket && websocket.readyState === WebSocket.OPEN) {
+           const buffer = new Uint8Array([value])
+           websocket.send(buffer)
+         }
+       }
+       
        // Web Audio API setup
        let audioContext = null
        let oscillator = null
@@ -72,6 +108,11 @@
        let morseSegments = [] // Array of {x, width, isActive}
        let morseAnimationId = null
        let isDrawingLine = false
+       
+       // Initialize WebSocket on page load
+       document.addEventListener('DOMContentLoaded', function() {
+         initWebSocket()
+       })
        
        // Initialize audio context (will be created on first user interaction)
        function initAudioContext() {
@@ -273,6 +314,9 @@
       })
 
        function handleSpacePress() {
+         // Send WebSocket message for space press
+         sendWebSocketMessage(1)
+         
          if (currentMode === 1) {
            // Mode 1: Only background color changes
            startBackgroundColor()
@@ -297,6 +341,9 @@
        }
 
        function handleSpaceRelease() {
+         // Send WebSocket message for space release
+         sendWebSocketMessage(0)
+         
          if (currentMode === 1) {
            // Mode 1: Reset background color
            stopBackgroundColor()
