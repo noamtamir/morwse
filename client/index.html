@@ -26,6 +26,51 @@
         right: 1rem;
       }
 
+      .user-list {
+        position: fixed;
+        top: 3rem;
+        right: 1rem;
+        z-index: 1001;
+      }
+
+      .user-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 0.2rem;
+        font-size: 14px;
+        font-family: 'Courier New', monospace;
+      }
+
+      .user-item:last-child {
+        margin-bottom: 0;
+      }
+
+      .user-name {
+        color: #00ff00;
+        min-width: 120px;
+      }
+
+      .current-user .user-name {
+        color: #ffffff;
+        font-weight: bold;
+      }
+
+      .user-morse-canvas {
+        position: absolute;
+        right: 100%;
+        width: calc(100vw - 140px);
+        height: 4px;
+        top: 50%;
+        transform: translateY(-50%);
+        z-index: 999;
+        pointer-events: none;
+        margin-right: 10px;
+      }
+
+      .user-item {
+        position: relative;
+      }
+
        .center-circle {
          position: fixed;
          top: 50%;
@@ -54,7 +99,10 @@
 <body>
     <code><pre>[ SPACE ] beep | [ ESC ] clear</pre></code>
     <div class="center-circle" id="centerCircle"></div>
-    <canvas class="morse-canvas" id="morseCanvas"></canvas>
+
+    <div class="user-list" id="userList">
+      <!-- User list will be populated here -->
+    </div>
 
     <script>
        // No mode logic needed - all effects are always active
@@ -62,6 +110,12 @@
        // WebSocket connection
        let websocket = null
        let websocketConnected = false
+
+       // User management
+       let currentUserId = null
+       let connectedUsers = []
+       let userMorseStates = {} // Track morse state for each user
+       let userMorseTimeouts = {} // Track timeouts for morse bars
        
        // Initialize WebSocket connection
        function initWebSocket() {
@@ -84,46 +138,196 @@
            }
            
            websocket.onmessage = function(event) {
-             console.log('WebSocket message received:', event.data, 'Type:', typeof event.data, 'Instanceof ArrayBuffer:', event.data instanceof ArrayBuffer, 'Instanceof Blob:', event.data instanceof Blob)
-             // Handle incoming messages from other users
-             if (event.data instanceof ArrayBuffer) {
-               const data = new Uint8Array(event.data)
-               const value = data[0]
-               console.log('Parsed remote user value (ArrayBuffer):', value)
-               
-               if (value === 1) {
-                 console.log('Handling remote space press')
-                 handleRemoteSpacePress()
-               } else if (value === 0) {
-                 console.log('Handling remote space release')
-                 handleRemoteSpaceRelease()
+             console.log('WebSocket message received:', event.data)
+
+             // Handle JSON messages
+             if (typeof event.data === 'string') {
+               try {
+                 const message = JSON.parse(event.data)
+                 handleWebSocketMessage(message)
+               } catch (e) {
+                 console.error('Failed to parse JSON message:', e)
                }
-             } else if (event.data instanceof Blob) {
-               // Handle Blob data by converting to ArrayBuffer
-               const reader = new FileReader()
-               reader.onload = function() {
-                 const data = new Uint8Array(reader.result)
-                 const value = data[0]
-                 console.log('Parsed remote user value (Blob):', value)
-                 
-                 if (value === 1) {
-                   console.log('Handling remote space press')
-                   handleRemoteSpacePress()
-                 } else if (value === 0) {
-                   console.log('Handling remote space release')
-                   handleRemoteSpaceRelease()
-                 }
-               }
-               reader.readAsArrayBuffer(event.data)
              } else {
-               console.log('Received unsupported data type:', event.data)
+               console.error('Received unexpected message type:', typeof event.data)
              }
            }
          } catch (error) {
            console.log('Failed to create WebSocket connection:', error)
          }
        }
-       
+
+       // Handle different types of WebSocket messages
+       function handleWebSocketMessage(message) {
+         console.log('Handling message:', message)
+
+         switch (message.type) {
+           case 'user_info':
+             currentUserId = message.user_id
+             console.log('Set current user ID:', currentUserId)
+             break
+
+           case 'user_list':
+             connectedUsers = message.users
+             console.log('Updated user list:', connectedUsers)
+             updateUserListDisplay()
+             break
+
+           case 'space_event':
+             console.log('Space event from:', message.user_id, 'value:', message.value)
+             if (message.value === 1) {
+               handleRemoteSpacePress(message.user_id)
+             } else if (message.value === 0) {
+               handleRemoteSpaceRelease(message.user_id)
+             }
+             break
+
+           default:
+             console.log('Unknown message type:', message.type)
+         }
+       }
+
+       // Update the user list display
+       function updateUserListDisplay() {
+         const userListElement = document.getElementById('userList')
+         userListElement.innerHTML = ''
+
+         // Clear existing canvases
+         Object.values(userCanvases).forEach(({ canvas }) => {
+           if (canvas.parentNode) {
+             canvas.parentNode.removeChild(canvas)
+           }
+         })
+         userCanvases = {}
+         userMorseSegments = {}
+         userDrawingStates = {}
+
+         // Sort users: current user first, then others
+         const sortedUsers = [...connectedUsers].sort((a, b) => {
+           if (a === currentUserId) return -1
+           if (b === currentUserId) return 1
+           return 0
+         })
+
+         sortedUsers.forEach((userId, index) => {
+           const userItem = document.createElement('div')
+           userItem.className = `user-item ${userId === currentUserId ? 'current-user' : ''}`
+           userItem.id = `user-${userId}`
+
+           const userName = document.createElement('div')
+           userName.className = 'user-name'
+           userName.textContent = userId === currentUserId ? `${userId} (Me)` : userId
+
+           userItem.appendChild(userName)
+           userListElement.appendChild(userItem)
+
+           // Create canvas for this user
+           createUserMorseCanvas(userId, index)
+
+           // Initialize morse state for this user
+           userMorseStates[userId] = false
+           userMorseSegments[userId] = []
+           userDrawingStates[userId] = false
+         })
+       }
+
+       // Create a morse canvas for a specific user
+       function createUserMorseCanvas(userId, index) {
+         const canvas = document.createElement('canvas')
+         canvas.className = 'user-morse-canvas'
+         canvas.id = `morse-canvas-${userId}`
+
+         // Set canvas size - width should match the CSS calc()
+         canvas.width = window.innerWidth - 140
+         canvas.height = 4
+
+         // Append to the user item
+         const userItem = document.getElementById(`user-${userId}`)
+         userItem.appendChild(canvas)
+
+         const ctx = canvas.getContext('2d')
+
+         // Set drawing style based on user
+         if (userId === currentUserId) {
+           ctx.fillStyle = '#ffffff' // White for current user
+         } else {
+           ctx.fillStyle = '#00ff00' // Green for other users
+         }
+
+         userCanvases[userId] = { canvas, ctx }
+       }
+
+       // Update morse visualization for a specific user
+       function updateUserMorse(userId, isPressed) {
+         if (!userCanvases[userId]) return
+
+         if (isPressed) {
+           userMorseStates[userId] = true
+           userDrawingStates[userId] = true
+
+           // Create a new segment at the right side
+           const newSegment = {
+             x: window.innerWidth - 20,
+             width: 2,
+             isActive: true,
+             userId: userId
+           }
+
+           userMorseSegments[userId].push(newSegment)
+           startUserMorseAnimation(userId)
+         } else {
+           userMorseStates[userId] = false
+           userDrawingStates[userId] = false
+         }
+       }
+
+       // Start morse animation for a specific user
+       function startUserMorseAnimation(userId) {
+         if (!userCanvases[userId]) return
+
+         function animate() {
+           const { canvas, ctx } = userCanvases[userId]
+           const segments = userMorseSegments[userId]
+
+           // Clear canvas
+           ctx.clearRect(0, 0, canvas.width, canvas.height)
+
+           // Move all segments left and draw them
+           for (let i = segments.length - 1; i >= 0; i--) {
+             const segment = segments[i]
+             segment.x -= 2 // Move 2px left per frame
+
+             // Remove segments that are completely off screen
+             if (segment.x + segment.width < 0) {
+               segments.splice(i, 1)
+               continue
+             }
+
+             // Draw the segment
+             ctx.fillRect(segment.x, 1, segment.width, 2)
+           }
+
+           // If we're currently drawing a line, extend it
+           if (userDrawingStates[userId]) {
+             const currentSegment = segments[segments.length - 1]
+             if (currentSegment) {
+               currentSegment.width += 1
+               // Don't let it go off the right edge
+               if (currentSegment.x + currentSegment.width > window.innerWidth) {
+                 currentSegment.width = window.innerWidth - currentSegment.x
+               }
+             }
+           }
+
+           // Continue animation if there are segments or if we're drawing
+           if (segments.length > 0 || userDrawingStates[userId]) {
+             requestAnimationFrame(animate)
+           }
+         }
+
+         animate()
+       }
+
        // Send WebSocket message as binary boolean
        function sendWebSocketMessage(value) {
          console.log('Attempting to send WebSocket message:', value, 'Connected:', websocketConnected, 'ReadyState:', websocket?.readyState)
@@ -141,12 +345,10 @@
        let oscillator = null
        let gainNode = null
        
-       // Morse code visualizer setup (canvas-based)
-       let morseCanvas = null
-       let morseCtx = null
-       let morseSegments = [] // Array of {x, width, isActive}
-       let morseAnimationId = null
-       let isDrawingLine = false
+       // User morse code visualizer setup
+       let userCanvases = {} // Per-user canvases
+       let userMorseSegments = {} // Per-user morse segments
+       let userDrawingStates = {} // Per-user drawing states
        
        // Initialize WebSocket on page load
        document.addEventListener('DOMContentLoaded', function() {
@@ -162,73 +364,6 @@
          }
        }
        
-       // Initialize morse canvas
-       function initMorseCanvas() {
-         if (!morseCanvas) {
-           morseCanvas = document.getElementById('morseCanvas')
-           morseCtx = morseCanvas.getContext('2d')
-           
-           // Set canvas size to match screen
-           morseCanvas.width = window.innerWidth
-           morseCanvas.height = 4
-           
-           // Set drawing style
-           morseCtx.fillStyle = '#00ff00'
-         }
-       }
-       
-       // Morse code visualizer animation (canvas-based)
-       function animateMorseCanvas() {
-         // Clear canvas
-         morseCtx.clearRect(0, 0, morseCanvas.width, morseCanvas.height)
-         
-         // Move all segments left and draw them
-         for (let i = morseSegments.length - 1; i >= 0; i--) {
-           const segment = morseSegments[i]
-           segment.x -= 2 // Move 2px left per frame
-           
-           // Remove segments that are completely off screen
-           if (segment.x + segment.width < 0) {
-             morseSegments.splice(i, 1)
-             continue
-           }
-           
-           // Set color based on whether it's a remote segment
-           if (segment.isRemote) {
-             morseCtx.fillStyle = '#ff6600' // Orange for remote users
-           } else {
-             morseCtx.fillStyle = '#00ff00' // Green for local user
-           }
-           
-           // Draw the segment
-           morseCtx.fillRect(segment.x, 1, segment.width, 2)
-         }
-         
-         // If we're currently drawing a line, extend it
-         if (isDrawingLine) {
-           const currentSegment = morseSegments[morseSegments.length - 1]
-           if (currentSegment) {
-             currentSegment.width += 1
-             // Don't let it go off the right edge
-             if (currentSegment.x + currentSegment.width > window.innerWidth) {
-               currentSegment.width = window.innerWidth - currentSegment.x
-             }
-           }
-         }
-         
-         // Continue animation if there are segments or if we're drawing
-         if (morseSegments.length > 0 || isDrawingLine) {
-           morseAnimationId = requestAnimationFrame(animateMorseCanvas)
-         }
-       }
-       
-       // Start morse animation
-       function startMorseAnimation() {
-         initMorseCanvas()
-         if (!morseAnimationId) {
-           morseAnimationId = requestAnimationFrame(animateMorseCanvas)
-         }
-       }
        
        // Reusable functions for mode behaviors
        function startBackgroundColor() {
@@ -279,70 +414,43 @@
          }
        }
        
-       function startMorseVisualizer() {
-         if (!isDrawingLine) {
-           isDrawingLine = true
-           
-           // Create a new segment at the right side
-           const newSegment = {
-             x: window.innerWidth - 20,
-             width: 2,
-             isActive: true
-           }
-           
-           morseSegments.push(newSegment)
-           startMorseAnimation()
-         }
-       }
-       
-       function stopMorseVisualizer() {
-         if (isDrawingLine) {
-           isDrawingLine = false
-         }
-       }
        
        // Remote user visualization functions
-       function handleRemoteSpacePress() {
-         // All remote effects combined
-         document.body.style.backgroundColor = '#ff6600'
+       function handleRemoteSpacePress(userId) {
+         console.log('Remote space press from:', userId)
+
+         // Update user's morse visualization
+         updateUserMorse(userId, true)
+
+         // Audio effects for remote users (no background color change)
          if (!oscillator) {
            initAudioContext()
            if (audioContext.state === 'suspended') {
              audioContext.resume()
            }
-           
+
            gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
-           
+
            oscillator = audioContext.createOscillator()
            oscillator.type = 'sine'
            oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
            oscillator.connect(gainNode)
            oscillator.start()
          }
-         
-         if (!isDrawingLine) {
-           isDrawingLine = true
-           
-           const newSegment = {
-             x: window.innerWidth - 20,
-             width: 2,
-             isActive: true,
-             isRemote: true
-           }
-           
-           morseSegments.push(newSegment)
-           startMorseAnimation()
-         }
        }
-       
-       function handleRemoteSpaceRelease() {
-         // Stop all remote effects
-         document.body.style.backgroundColor = ''
+
+       function handleRemoteSpaceRelease(userId) {
+         console.log('Remote space release from:', userId)
+
+         // Update user's morse visualization
+         updateUserMorse(userId, false)
+
+         // Stop remote audio effects
          if (oscillator) {
            try {
              gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
              gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
-             
+
              setTimeout(() => {
                if (oscillator) {
                  oscillator.stop()
@@ -354,11 +462,8 @@
              oscillator = null
            }
          }
-         
-         if (isDrawingLine) {
-           isDrawingLine = false
-         }
        }
+
 
        // No mode switching needed
        
@@ -366,31 +471,25 @@
        document.addEventListener('keydown', function (event) {
          if (event.key === 'Escape') {
            // Clear all effects
-           
-           // Clear all effects
            stopBackgroundColor()
            stopAudio()
-           stopMorseVisualizer()
-           
+
            // Hide circle if visible
            const circle = document.getElementById('centerCircle')
            if (circle) {
              circle.style.display = 'none'
            }
-           
-           // Clear morse canvas
-           if (morseCtx) {
-             morseCtx.clearRect(0, 0, morseCanvas.width, morseCanvas.height)
-           }
-           
-           // Clear morse segments array
-           morseSegments = []
-           
-           // Stop any running animations
-           if (morseAnimationId) {
-             cancelAnimationFrame(morseAnimationId)
-             morseAnimationId = null
-           }
+
+           // Clear all user morse canvases
+           Object.values(userCanvases).forEach(({ canvas, ctx }) => {
+             ctx.clearRect(0, 0, canvas.width, canvas.height)
+           })
+
+           // Clear all user morse segments
+           Object.keys(userMorseSegments).forEach(userId => {
+             userMorseSegments[userId] = []
+             userDrawingStates[userId] = false
+           })
          }
        })
 
@@ -413,21 +512,29 @@
        function handleSpacePress() {
          // Send WebSocket message for space press
          sendWebSocketMessage(1)
-         
-         // All effects: background + audio + visualizer
+
+         // Update current user's morse visualization
+         if (currentUserId) {
+           updateUserMorse(currentUserId, true)
+         }
+
+         // Effects: background + audio
          startBackgroundColor()
          startAudio()
-         startMorseVisualizer()
        }
 
        function handleSpaceRelease() {
          // Send WebSocket message for space release
          sendWebSocketMessage(0)
-         
+
+         // Update current user's morse visualization
+         if (currentUserId) {
+           updateUserMorse(currentUserId, false)
+         }
+
          // Stop all effects
          stopBackgroundColor()
          stopAudio()
-         stopMorseVisualizer()
        }
     </script>
 </body>
