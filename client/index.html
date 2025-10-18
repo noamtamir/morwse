@@ -14,9 +14,10 @@
       }
 
       pre {
-        text-align: center;
+        text-align: left;
         margin: 0;
         color: #808080;
+        float: left;
       }
 
       .mode-display {
@@ -27,9 +28,10 @@
 
       .user-list {
         position: fixed;
-        top: 3rem;
+        top: 0;
         right: 1rem;
         z-index: 1001;
+        padding-top: 1rem;
       }
 
       .user-item {
@@ -96,7 +98,7 @@
     </style>
 </head>
 <body>
-    <code><pre>[ SPACE ] beep | [ ESC ] clear</pre></code>
+    <code><pre>[ SPACE ] beep</pre></code>
     <div class="center-circle" id="centerCircle"></div>
 
     <div class="user-list" id="userList">
@@ -491,31 +493,6 @@
 
        // No mode switching needed
        
-       // ESC key handler - clear screen
-       document.addEventListener('keydown', function (event) {
-         if (event.key === 'Escape') {
-           // Clear all effects
-           stopBackgroundColor()
-           stopAudio()
-
-           // Hide circle if visible
-           const circle = document.getElementById('centerCircle')
-           if (circle) {
-             circle.style.display = 'none'
-           }
-
-           // Clear all user morse canvases
-           Object.values(userCanvases).forEach(({ canvas, ctx }) => {
-             ctx.clearRect(0, 0, canvas.width, canvas.height)
-           })
-
-           // Clear all user morse segments
-           Object.keys(userMorseSegments).forEach(userId => {
-             userMorseSegments[userId] = []
-             userDrawingStates[userId] = false
-           })
-         }
-       })
 
       const SPACE = 'Space'
 
