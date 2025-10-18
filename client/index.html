@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Morwse</title>
+    <style>
+      body {
+        background-color: #1a1a1a;
+        color: #ffffff;
+        font-family: 'Courier New', monospace;
+        margin: 0;
+        padding: 1rem;
+        min-height: 100vh;
+      }
+
+      pre {
+        text-align: center;
+        margin: 0;
+        color: #00ff00;
+      }
+
+      .mode-display {
+        position: fixed;
+        top: 1rem;
+        right: 1rem;
+      }
+
+      .center-circle {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: 100px;
+        height: 100px;
+        background-color: #006600;
+        border-radius: 50%;
+        z-index: 1000;
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <code><pre class="mode-display" id="modeDisplay">1</pre></code>
+    <code><pre>[ SPACE ] beep | [ 1 - 4 ] modes</pre></code>
+    <div class="center-circle" id="centerCircle"></div>
+
+    <script>
+       let currentMode = 1
+       const modeDisplay = document.getElementById('modeDisplay')
+       
+       // Web Audio API setup
+       let audioContext = null
+       let oscillator = null
+       let gainNode = null
+       
+       // Initialize audio context (will be created on first user interaction)
+       function initAudioContext() {
+         if (!audioContext) {
+           audioContext = new (window.AudioContext || window.webkitAudioContext)()
+           gainNode = audioContext.createGain()
+           gainNode.connect(audioContext.destination)
+         }
+       }
+
+      // Mode switching with keys 1-4
+      document.addEventListener('keydown', function (event) {
+        if (event.key >= '1' && event.key <= '4') {
+          currentMode = parseInt(event.key)
+          modeDisplay.textContent = currentMode
+        }
+      })
+
+      const SPACE = 'Space'
+
+      // Space bar behavior based on current mode
+      document.addEventListener('keydown', function (event) {
+        if (event.code === SPACE) {
+          event.preventDefault() // Prevent default space bar behavior (page scrolling)
+          handleSpacePress()
+        }
+      })
+
+      document.addEventListener('keyup', function (event) {
+        if (event.code === SPACE) {
+          handleSpaceRelease()
+        }
+      })
+
+       function handleSpacePress() {
+         if (currentMode === 1) {
+           // Mode 1: Only background color changes
+           document.body.style.backgroundColor = '#006600'
+         } else if (currentMode === 2) {
+           // Mode 2: Only circle appears (no background change)
+           const circle = document.getElementById('centerCircle')
+           if (circle) {
+             circle.style.display = 'block'
+           }
+         } else if (currentMode === 3) {
+           // Mode 3: Audio only - play sine wave
+           if (!oscillator) {
+             initAudioContext()
+             if (audioContext.state === 'suspended') {
+               audioContext.resume()
+             }
+             
+             // Reset gain to full volume
+             gainNode.gain.setValueAtTime(0.3, audioContext.currentTime) // Set to reasonable volume
+             
+             oscillator = audioContext.createOscillator()
+             oscillator.type = 'sine'
+             oscillator.frequency.setValueAtTime(440, audioContext.currentTime) // A4 note
+             oscillator.connect(gainNode)
+             oscillator.start()
+           }
+         }
+       }
+
+       function handleSpaceRelease() {
+         if (currentMode === 1) {
+           // Mode 1: Reset background color
+           document.body.style.backgroundColor = ''
+         } else if (currentMode === 2) {
+           // Mode 2: Remove circle
+           const circle = document.getElementById('centerCircle')
+           if (circle) {
+             circle.style.display = 'none'
+           }
+         } else if (currentMode === 3) {
+           // Mode 3: Stop sine wave with volume fade-out
+           if (oscillator) {
+             try {
+               // Quick volume fade-out to prevent clicking
+               gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
+               gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01) // 10ms fade
+               
+               // Stop oscillator after fade completes
+               setTimeout(() => {
+                 if (oscillator) {
+                   oscillator.stop()
+                   oscillator.disconnect()
+                   oscillator = null
+                 }
+               }, 15) // Slightly longer than fade duration
+             } catch (e) {
+               // Oscillator might already be stopped
+               oscillator = null
+             }
+           }
+         }
+       }
+    </script>
+  </body>
+</html>
