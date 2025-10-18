@@ -84,6 +84,43 @@
              websocketConnected = false
              console.log('WebSocket error:', error)
            }
+           
+           websocket.onmessage = function(event) {
+             console.log('WebSocket message received:', event.data, 'Type:', typeof event.data, 'Instanceof ArrayBuffer:', event.data instanceof ArrayBuffer, 'Instanceof Blob:', event.data instanceof Blob)
+             // Handle incoming messages from other users
+             if (event.data instanceof ArrayBuffer) {
+               const data = new Uint8Array(event.data)
+               const value = data[0]
+               console.log('Parsed remote user value (ArrayBuffer):', value)
+               
+               if (value === 1) {
+                 console.log('Handling remote space press')
+                 handleRemoteSpacePress()
+               } else if (value === 0) {
+                 console.log('Handling remote space release')
+                 handleRemoteSpaceRelease()
+               }
+             } else if (event.data instanceof Blob) {
+               // Handle Blob data by converting to ArrayBuffer
+               const reader = new FileReader()
+               reader.onload = function() {
+                 const data = new Uint8Array(reader.result)
+                 const value = data[0]
+                 console.log('Parsed remote user value (Blob):', value)
+                 
+                 if (value === 1) {
+                   console.log('Handling remote space press')
+                   handleRemoteSpacePress()
+                 } else if (value === 0) {
+                   console.log('Handling remote space release')
+                   handleRemoteSpaceRelease()
+                 }
+               }
+               reader.readAsArrayBuffer(event.data)
+             } else {
+               console.log('Received unsupported data type:', event.data)
+             }
+           }
          } catch (error) {
            console.log('Failed to create WebSocket connection:', error)
          }
@@ -91,9 +128,13 @@
        
        // Send WebSocket message as binary boolean
        function sendWebSocketMessage(value) {
+         console.log('Attempting to send WebSocket message:', value, 'Connected:', websocketConnected, 'ReadyState:', websocket?.readyState)
          if (websocketConnected && websocket && websocket.readyState === WebSocket.OPEN) {
            const buffer = new Uint8Array([value])
            websocket.send(buffer)
+           console.log('WebSocket message sent successfully:', value)
+         } else {
+           console.log('WebSocket not ready to send. Connected:', websocketConnected, 'ReadyState:', websocket?.readyState)
          }
        }
        
@@ -152,6 +193,13 @@
            if (segment.x + segment.width < 0) {
              morseSegments.splice(i, 1)
              continue
+           }
+           
+           // Set color based on whether it's a remote segment
+           if (segment.isRemote) {
+             morseCtx.fillStyle = '#ff6600' // Orange for remote users
+           } else {
+             morseCtx.fillStyle = '#00ff00' // Green for local user
            }
            
            // Draw the segment
@@ -252,6 +300,143 @@
        function stopMorseVisualizer() {
          if (isDrawingLine) {
            isDrawingLine = false
+         }
+       }
+       
+       // Remote user visualization functions
+       function handleRemoteSpacePress() {
+         if (currentMode === 1) {
+           // Mode 1: Remote user background color (different color for distinction)
+           document.body.style.backgroundColor = '#ff6600' // Orange for remote users
+         } else if (currentMode === 2) {
+           // Mode 2: Remote user circle (different color)
+           const circle = document.getElementById('centerCircle')
+           if (circle) {
+             circle.style.display = 'block'
+             circle.style.backgroundColor = '#ff6600' // Orange for remote users
+           }
+         } else if (currentMode === 3) {
+           // Mode 3: Remote user audio (different frequency)
+           if (!oscillator) {
+             initAudioContext()
+             if (audioContext.state === 'suspended') {
+               audioContext.resume()
+             }
+             
+             gainNode.gain.setValueAtTime(0.2, audioContext.currentTime) // Lower volume for remote
+             
+             oscillator = audioContext.createOscillator()
+             oscillator.type = 'sine'
+             oscillator.frequency.setValueAtTime(880, audioContext.currentTime) // Higher frequency for remote
+             oscillator.connect(gainNode)
+             oscillator.start()
+           }
+         } else if (currentMode === 4) {
+           // Mode 4: Remote user morse visualizer
+           if (!isDrawingLine) {
+             isDrawingLine = true
+             
+             const newSegment = {
+               x: window.innerWidth - 20,
+               width: 2,
+               isActive: true,
+               isRemote: true // Mark as remote for different color
+             }
+             
+             morseSegments.push(newSegment)
+             startMorseAnimation()
+           }
+         } else if (currentMode === 5) {
+           // Mode 5: All remote effects combined
+           document.body.style.backgroundColor = '#ff6600'
+           if (!oscillator) {
+             initAudioContext()
+             if (audioContext.state === 'suspended') {
+               audioContext.resume()
+             }
+             
+             gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
+             
+             oscillator = audioContext.createOscillator()
+             oscillator.type = 'sine'
+             oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
+             oscillator.connect(gainNode)
+             oscillator.start()
+           }
+           
+           if (!isDrawingLine) {
+             isDrawingLine = true
+             
+             const newSegment = {
+               x: window.innerWidth - 20,
+               width: 2,
+               isActive: true,
+               isRemote: true
+             }
+             
+             morseSegments.push(newSegment)
+             startMorseAnimation()
+           }
+         }
+       }
+       
+       function handleRemoteSpaceRelease() {
+         if (currentMode === 1) {
+           // Mode 1: Reset remote background
+           document.body.style.backgroundColor = ''
+         } else if (currentMode === 2) {
+           // Mode 2: Hide remote circle
+           const circle = document.getElementById('centerCircle')
+           if (circle) {
+             circle.style.display = 'none'
+             circle.style.backgroundColor = '#006600' // Reset to original color
+           }
+         } else if (currentMode === 3) {
+           // Mode 3: Stop remote audio
+           if (oscillator) {
+             try {
+               gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
+               gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
+               
+               setTimeout(() => {
+                 if (oscillator) {
+                   oscillator.stop()
+                   oscillator.disconnect()
+                   oscillator = null
+                 }
+               }, 15)
+             } catch (e) {
+               oscillator = null
+             }
+           }
+         } else if (currentMode === 4) {
+           // Mode 4: Stop remote morse visualizer
+           if (isDrawingLine) {
+             isDrawingLine = false
+           }
+         } else if (currentMode === 5) {
+           // Mode 5: Stop all remote effects
+           document.body.style.backgroundColor = ''
+           if (oscillator) {
+             try {
+               gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
+               gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
+               
+               setTimeout(() => {
+                 if (oscillator) {
+                   oscillator.stop()
+                   oscillator.disconnect()
+                   oscillator = null
+                 }
+               }, 15)
+             } catch (e) {
+               oscillator = null
+             }
+           }
+           
+           if (isDrawingLine) {
+             isDrawingLine = false
+           }
          }
        }
 
