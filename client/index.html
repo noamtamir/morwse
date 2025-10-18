@@ -52,14 +52,12 @@
     </style>
 </head>
 <body>
-    <code><pre class="mode-display" id="modeDisplay">1</pre></code>
-    <code><pre>[ SPACE ] beep | [ 1 - 5 ] modes | [ ESC ] clear</pre></code>
+    <code><pre>[ SPACE ] beep | [ ESC ] clear</pre></code>
     <div class="center-circle" id="centerCircle"></div>
     <canvas class="morse-canvas" id="morseCanvas"></canvas>
 
     <script>
-       let currentMode = 1
-       const modeDisplay = document.getElementById('modeDisplay')
+       // No mode logic needed - all effects are always active
        
        // WebSocket connection
        let websocket = null
@@ -305,155 +303,69 @@
        
        // Remote user visualization functions
        function handleRemoteSpacePress() {
-         if (currentMode === 1) {
-           // Mode 1: Remote user background color (different color for distinction)
-           document.body.style.backgroundColor = '#ff6600' // Orange for remote users
-         } else if (currentMode === 2) {
-           // Mode 2: Remote user circle (different color)
-           const circle = document.getElementById('centerCircle')
-           if (circle) {
-             circle.style.display = 'block'
-             circle.style.backgroundColor = '#ff6600' // Orange for remote users
-           }
-         } else if (currentMode === 3) {
-           // Mode 3: Remote user audio (different frequency)
-           if (!oscillator) {
-             initAudioContext()
-             if (audioContext.state === 'suspended') {
-               audioContext.resume()
-             }
-             
-             gainNode.gain.setValueAtTime(0.2, audioContext.currentTime) // Lower volume for remote
-             
-             oscillator = audioContext.createOscillator()
-             oscillator.type = 'sine'
-             oscillator.frequency.setValueAtTime(880, audioContext.currentTime) // Higher frequency for remote
-             oscillator.connect(gainNode)
-             oscillator.start()
-           }
-         } else if (currentMode === 4) {
-           // Mode 4: Remote user morse visualizer
-           if (!isDrawingLine) {
-             isDrawingLine = true
-             
-             const newSegment = {
-               x: window.innerWidth - 20,
-               width: 2,
-               isActive: true,
-               isRemote: true // Mark as remote for different color
-             }
-             
-             morseSegments.push(newSegment)
-             startMorseAnimation()
-           }
-         } else if (currentMode === 5) {
-           // Mode 5: All remote effects combined
-           document.body.style.backgroundColor = '#ff6600'
-           if (!oscillator) {
-             initAudioContext()
-             if (audioContext.state === 'suspended') {
-               audioContext.resume()
-             }
-             
-             gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
-             
-             oscillator = audioContext.createOscillator()
-             oscillator.type = 'sine'
-             oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
-             oscillator.connect(gainNode)
-             oscillator.start()
+         // All remote effects combined
+         document.body.style.backgroundColor = '#ff6600'
+         if (!oscillator) {
+           initAudioContext()
+           if (audioContext.state === 'suspended') {
+             audioContext.resume()
            }
            
-           if (!isDrawingLine) {
-             isDrawingLine = true
-             
-             const newSegment = {
-               x: window.innerWidth - 20,
-               width: 2,
-               isActive: true,
-               isRemote: true
-             }
-             
-             morseSegments.push(newSegment)
-             startMorseAnimation()
+           gainNode.gain.setValueAtTime(0.2, audioContext.currentTime)
+           
+           oscillator = audioContext.createOscillator()
+           oscillator.type = 'sine'
+           oscillator.frequency.setValueAtTime(880, audioContext.currentTime)
+           oscillator.connect(gainNode)
+           oscillator.start()
+         }
+         
+         if (!isDrawingLine) {
+           isDrawingLine = true
+           
+           const newSegment = {
+             x: window.innerWidth - 20,
+             width: 2,
+             isActive: true,
+             isRemote: true
            }
+           
+           morseSegments.push(newSegment)
+           startMorseAnimation()
          }
        }
        
        function handleRemoteSpaceRelease() {
-         if (currentMode === 1) {
-           // Mode 1: Reset remote background
-           document.body.style.backgroundColor = ''
-         } else if (currentMode === 2) {
-           // Mode 2: Hide remote circle
-           const circle = document.getElementById('centerCircle')
-           if (circle) {
-             circle.style.display = 'none'
-             circle.style.backgroundColor = '#006600' // Reset to original color
+         // Stop all remote effects
+         document.body.style.backgroundColor = ''
+         if (oscillator) {
+           try {
+             gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
+             gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
+             
+             setTimeout(() => {
+               if (oscillator) {
+                 oscillator.stop()
+                 oscillator.disconnect()
+                 oscillator = null
+               }
+             }, 15)
+           } catch (e) {
+             oscillator = null
            }
-         } else if (currentMode === 3) {
-           // Mode 3: Stop remote audio
-           if (oscillator) {
-             try {
-               gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
-               gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
-               
-               setTimeout(() => {
-                 if (oscillator) {
-                   oscillator.stop()
-                   oscillator.disconnect()
-                   oscillator = null
-                 }
-               }, 15)
-             } catch (e) {
-               oscillator = null
-             }
-           }
-         } else if (currentMode === 4) {
-           // Mode 4: Stop remote morse visualizer
-           if (isDrawingLine) {
-             isDrawingLine = false
-           }
-         } else if (currentMode === 5) {
-           // Mode 5: Stop all remote effects
-           document.body.style.backgroundColor = ''
-           if (oscillator) {
-             try {
-               gainNode.gain.setValueAtTime(gainNode.gain.value, audioContext.currentTime)
-               gainNode.gain.linearRampToValueAtTime(0, audioContext.currentTime + 0.01)
-               
-               setTimeout(() => {
-                 if (oscillator) {
-                   oscillator.stop()
-                   oscillator.disconnect()
-                   oscillator = null
-                 }
-               }, 15)
-             } catch (e) {
-               oscillator = null
-             }
-           }
-           
-           if (isDrawingLine) {
-             isDrawingLine = false
-           }
+         }
+         
+         if (isDrawingLine) {
+           isDrawingLine = false
          }
        }
 
-       // Mode switching with keys 1-5
-       document.addEventListener('keydown', function (event) {
-         if (event.key >= '1' && event.key <= '5') {
-           currentMode = parseInt(event.key)
-           modeDisplay.textContent = currentMode
-         }
-       })
+       // No mode switching needed
        
-       // ESC key handler - clear screen and reset to mode 1
+       // ESC key handler - clear screen
        document.addEventListener('keydown', function (event) {
          if (event.key === 'Escape') {
-           // Reset to mode 1
-           currentMode = 1
-           modeDisplay.textContent = currentMode
+           // Clear all effects
            
            // Clear all effects
            stopBackgroundColor()
@@ -502,54 +414,20 @@
          // Send WebSocket message for space press
          sendWebSocketMessage(1)
          
-         if (currentMode === 1) {
-           // Mode 1: Only background color changes
-           startBackgroundColor()
-         } else if (currentMode === 2) {
-           // Mode 2: Only circle appears (no background change)
-           const circle = document.getElementById('centerCircle')
-           if (circle) {
-             circle.style.display = 'block'
-           }
-         } else if (currentMode === 3) {
-           // Mode 3: Audio only - play sine wave
-           startAudio()
-         } else if (currentMode === 4) {
-           // Mode 4: Morse code visualizer - start drawing line
-           startMorseVisualizer()
-         } else if (currentMode === 5) {
-           // Mode 5: Combination of modes 1+3+4 (background + audio + visualizer)
-           startBackgroundColor()
-           startAudio()
-           startMorseVisualizer()
-         }
+         // All effects: background + audio + visualizer
+         startBackgroundColor()
+         startAudio()
+         startMorseVisualizer()
        }
 
        function handleSpaceRelease() {
          // Send WebSocket message for space release
          sendWebSocketMessage(0)
          
-         if (currentMode === 1) {
-           // Mode 1: Reset background color
-           stopBackgroundColor()
-         } else if (currentMode === 2) {
-           // Mode 2: Remove circle
-           const circle = document.getElementById('centerCircle')
-           if (circle) {
-             circle.style.display = 'none'
-           }
-         } else if (currentMode === 3) {
-           // Mode 3: Stop sine wave with volume fade-out
-           stopAudio()
-         } else if (currentMode === 4) {
-           // Mode 4: Morse code visualizer - stop drawing line
-           stopMorseVisualizer()
-         } else if (currentMode === 5) {
-           // Mode 5: Combination - stop all effects
-           stopBackgroundColor()
-           stopAudio()
-           stopMorseVisualizer()
-         }
+         // Stop all effects
+         stopBackgroundColor()
+         stopAudio()
+         stopMorseVisualizer()
        }
     </script>
 </body>
