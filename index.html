@@ -660,67 +660,55 @@
          stopAudio(currentUserId)
        }
 
-       function handleDitPress() {
-         // Fire and forget - ignore if already active
-         if (ditActive) return
+      // Helper function to perform a morse symbol with given duration
+      function performMorseSymbol(duration) {
+        return new Promise((resolve) => {
+          // Send WebSocket message for start
+          sendWebSocketMessage(1)
 
-         ditActive = true
+          // Update current user's morse visualization
+          if (currentUserId) {
+            updateUserMorse(currentUserId, true)
+          }
 
-         // Send WebSocket message for dit press
-         sendWebSocketMessage(1)
+          // Effects: background + audio
+          startBackgroundColor()
+          startAudio(currentUserId)
 
-         // Update current user's morse visualization
-         if (currentUserId) {
-           updateUserMorse(currentUserId, true)
-         }
+          // Auto-release after duration
+          setTimeout(() => {
+            sendWebSocketMessage(0)
+            if (currentUserId) {
+              updateUserMorse(currentUserId, false)
+            }
+            stopBackgroundColor()
+            stopAudio(currentUserId)
+            resolve()
+          }, duration)
+        })
+      }
 
-         // Effects: background + audio
-         startBackgroundColor()
-         startAudio(currentUserId)
+      function handleDitPress() {
+        // Fire and forget - ignore if already active
+        if (ditActive) return
 
-         // Auto-release after DIT_DURATION
-         ditTimeout = setTimeout(() => {
-           sendWebSocketMessage(0)
-           if (currentUserId) {
-             updateUserMorse(currentUserId, false)
-           }
-           stopBackgroundColor()
-           stopAudio(currentUserId)
-           ditTimeout = null
-           ditActive = false
-         }, DIT_DURATION)
-       }
+        ditActive = true
+        performMorseSymbol(DIT_DURATION).then(() => {
+          ditTimeout = null
+          ditActive = false
+        })
+      }
 
-       function handleDahPress() {
-         // Fire and forget - ignore if already active
-         if (dahActive) return
+      function handleDahPress() {
+        // Fire and forget - ignore if already active
+        if (dahActive) return
 
-         dahActive = true
-
-         // Send WebSocket message for dah press
-         sendWebSocketMessage(1)
-
-         // Update current user's morse visualization
-         if (currentUserId) {
-           updateUserMorse(currentUserId, true)
-         }
-
-         // Effects: background + audio
-         startBackgroundColor()
-         startAudio(currentUserId)
-
-         // Auto-release after DAH_DURATION
-         dahTimeout = setTimeout(() => {
-           sendWebSocketMessage(0)
-           if (currentUserId) {
-             updateUserMorse(currentUserId, false)
-           }
-           stopBackgroundColor()
-           stopAudio(currentUserId)
-           dahTimeout = null
-           dahActive = false
-         }, DAH_DURATION)
-       }
+        dahActive = true
+        performMorseSymbol(DAH_DURATION).then(() => {
+          dahTimeout = null
+          dahActive = false
+        })
+      }
 
        // Toggle morse code input
        function toggleMorseInput() {
@@ -756,107 +744,63 @@
          })
        })
 
-       // Convert text to morse and transmit
-       async function transmitMorseCode(text) {
-         if (morseTransmitting) return
+      // Convert text to morse and transmit
+      async function transmitMorseCode(text) {
+        if (morseTransmitting) return
 
-         morseTransmitting = true
-         const upperText = text.toUpperCase()
+        morseTransmitting = true
+        try {
+          const upperText = text.toUpperCase()
 
-         // Close input
-         toggleMorseInput()
+          // Close input
+          toggleMorseInput()
 
-         for (let i = 0; i < upperText.length; i++) {
-           const char = upperText[i]
-           const morseSymbols = MORSE_CODE[char]
+          for (let i = 0; i < upperText.length; i++) {
+            const char = upperText[i]
+            const morseSymbols = MORSE_CODE[char]
 
-           if (!morseSymbols) continue // Skip unknown characters
+            if (!morseSymbols) continue // Skip unknown characters
 
-           if (morseSymbols === ' ') {
-             // Word gap (already includes letter gap from previous letter)
-             await sleep(WORD_GAP - LETTER_GAP)
-           } else {
-             // Transmit each dit or dah
-             for (let j = 0; j < morseSymbols.length; j++) {
-               const symbol = morseSymbols[j]
+            if (morseSymbols === ' ') {
+              // Word gap (already includes letter gap from previous letter)
+              await sleep(WORD_GAP - LETTER_GAP)
+            } else {
+              // Transmit each dit or dah
+              for (let j = 0; j < morseSymbols.length; j++) {
+                const symbol = morseSymbols[j]
 
-               if (symbol === '.') {
-                 await transmitDit()
-               } else if (symbol === '-') {
-                 await transmitDah()
-               }
+                if (symbol === '.') {
+                  await transmitDit()
+                } else if (symbol === '-') {
+                  await transmitDah()
+                }
 
-               // Gap between symbols within the same letter
-               if (j < morseSymbols.length - 1) {
-                 await sleep(INTER_SYMBOL_GAP)
-               }
-             }
+                // Gap between symbols within the same letter
+                if (j < morseSymbols.length - 1) {
+                  await sleep(INTER_SYMBOL_GAP)
+                }
+              }
 
-             // Gap between letters
-             if (i < upperText.length - 1 && upperText[i + 1] !== ' ') {
-               await sleep(LETTER_GAP)
-             }
-           }
-         }
+              // Gap between letters
+              if (i < upperText.length - 1 && upperText[i + 1] !== ' ') {
+                await sleep(LETTER_GAP)
+              }
+            }
+          }
+        } finally {
+          morseTransmitting = false
+        }
+      }
 
-         morseTransmitting = false
-       }
+      // Transmit a dit
+      function transmitDit() {
+        return performMorseSymbol(DIT_DURATION)
+      }
 
-       // Transmit a dit
-       function transmitDit() {
-         return new Promise((resolve) => {
-           // Send WebSocket message
-           sendWebSocketMessage(1)
-
-           // Update visualization
-           if (currentUserId) {
-             updateUserMorse(currentUserId, true)
-           }
-
-           // Effects
-           startBackgroundColor()
-           startAudio(currentUserId)
-
-           // Auto-release after DIT_DURATION
-           setTimeout(() => {
-             sendWebSocketMessage(0)
-             if (currentUserId) {
-               updateUserMorse(currentUserId, false)
-             }
-             stopBackgroundColor()
-             stopAudio(currentUserId)
-             resolve()
-           }, DIT_DURATION)
-         })
-       }
-
-       // Transmit a dah
-       function transmitDah() {
-         return new Promise((resolve) => {
-           // Send WebSocket message
-           sendWebSocketMessage(1)
-
-           // Update visualization
-           if (currentUserId) {
-             updateUserMorse(currentUserId, true)
-           }
-
-           // Effects
-           startBackgroundColor()
-           startAudio(currentUserId)
-
-           // Auto-release after DAH_DURATION
-           setTimeout(() => {
-             sendWebSocketMessage(0)
-             if (currentUserId) {
-               updateUserMorse(currentUserId, false)
-             }
-             stopBackgroundColor()
-             stopAudio(currentUserId)
-             resolve()
-           }, DAH_DURATION)
-         })
-       }
+      // Transmit a dah
+      function transmitDah() {
+        return performMorseSymbol(DAH_DURATION)
+      }
 
        // Sleep utility
        function sleep(ms) {
