@@ -75,6 +75,43 @@
          z-index: 1000;
          pointer-events: none;
        }
+
+       .morse-input-container {
+         position: fixed;
+         bottom: 0;
+         left: 0;
+         width: 100%;
+         background-color: #2a2a2a;
+         border-top: 2px solid #00ff00;
+         padding: 1rem;
+         z-index: 2000;
+         display: none;
+       }
+
+       .morse-input-container.active {
+         display: block;
+       }
+
+       .morse-input {
+         width: 100%;
+         background-color: #1a1a1a;
+         color: #ffffff;
+         border: 1px solid #00ff00;
+         padding: 0.5rem;
+         font-family: 'Courier New', monospace;
+         font-size: 14px;
+         outline: none;
+       }
+
+       .morse-input::placeholder {
+         color: #808080;
+       }
+
+       .morse-input-hint {
+         color: #808080;
+         font-size: 12px;
+         margin-top: 0.5rem;
+       }
     </style>
 </head>
 <body>
@@ -82,6 +119,7 @@
 [ SPACE ] beep
 [ . ] dit
 [ - ] dah
+[ i ] input text as morse
 
 
 
@@ -111,6 +149,11 @@
 
     <div class="user-list" id="userList">
       <!-- User list will be populated here -->
+    </div>
+
+    <div class="morse-input-container" id="morseInputContainer">
+      <input type="text" class="morse-input" id="morseInput" placeholder="Type message to send as morse code..." />
+      <div class="morse-input-hint">Press Enter to send, Esc to close</div>
     </div>
 
     <script>
@@ -495,16 +538,46 @@
       const SPACE = 'Space'
       const DIT_KEY = 'Period' // . key
       const DAH_KEY = 'Minus' // - key
+      const INPUT_KEY = 'KeyI' // i key
       const DIT_DURATION = 60 // milliseconds
       const DAH_DURATION = 180 // milliseconds (3x dit)
+      const INTER_SYMBOL_GAP = 60 // Gap between dit/dah within a letter
+      const LETTER_GAP = 180 // Gap between letters (3x dit)
+      const WORD_GAP = 420 // Gap between words (7x dit)
 
       let ditTimeout = null
       let dahTimeout = null
       let ditActive = false
       let dahActive = false
+      let morseInputActive = false
+      let morseTransmitting = false
+
+      // Morse code lookup table
+      const MORSE_CODE = {
+        'A': '.-', 'B': '-...', 'C': '-.-.', 'D': '-..', 'E': '.', 'F': '..-.',
+        'G': '--.', 'H': '....', 'I': '..', 'J': '.---', 'K': '-.-', 'L': '.-..',
+        'M': '--', 'N': '-.', 'O': '---', 'P': '.--.', 'Q': '--.-', 'R': '.-.',
+        'S': '...', 'T': '-', 'U': '..-', 'V': '...-', 'W': '.--', 'X': '-..-',
+        'Y': '-.--', 'Z': '--..', '1': '.----', '2': '..---', '3': '...--',
+        '4': '....-', '5': '.....', '6': '-....', '7': '--...', '8': '---..',
+        '9': '----.', '0': '-----', '.': '.-.-.-', ',': '--..--', '?': '..--..',
+        '/': '-..-.', ' ': ' '
+      }
 
       // Space bar behavior based on current mode
       document.addEventListener('keydown', function (event) {
+        // Handle input mode toggle - only open with 'i', not close
+        if (event.code === INPUT_KEY && !event.repeat && !morseTransmitting && !morseInputActive) {
+          event.preventDefault()
+          toggleMorseInput()
+          return
+        }
+
+        // If input is active, don't handle other keys (except within input field)
+        if (morseInputActive) {
+          return
+        }
+
         if (event.code === SPACE && !event.repeat) {
           event.preventDefault() // Prevent default space bar behavior (page scrolling)
           handleSpacePress()
@@ -518,6 +591,8 @@
       })
 
       document.addEventListener('keyup', function (event) {
+        if (morseInputActive) return
+
         if (event.code === SPACE) {
           handleSpaceRelease()
         }
@@ -645,6 +720,147 @@
            dahTimeout = null
            dahActive = false
          }, DAH_DURATION)
+       }
+
+       // Toggle morse code input
+       function toggleMorseInput() {
+         const container = document.getElementById('morseInputContainer')
+         const input = document.getElementById('morseInput')
+
+         morseInputActive = !morseInputActive
+
+         if (morseInputActive) {
+           container.classList.add('active')
+           input.focus()
+         } else {
+           container.classList.remove('active')
+           input.value = ''
+         }
+       }
+
+       // Handle input field events
+       document.addEventListener('DOMContentLoaded', function() {
+         const input = document.getElementById('morseInput')
+
+         input.addEventListener('keydown', function(event) {
+           if (event.key === 'Enter') {
+             event.preventDefault()
+             const text = input.value.trim()
+             if (text && !morseTransmitting) {
+               transmitMorseCode(text)
+             }
+           } else if (event.key === 'Escape') {
+             event.preventDefault()
+             toggleMorseInput()
+           }
+         })
+       })
+
+       // Convert text to morse and transmit
+       async function transmitMorseCode(text) {
+         if (morseTransmitting) return
+
+         morseTransmitting = true
+         const upperText = text.toUpperCase()
+
+         // Close input
+         toggleMorseInput()
+
+         for (let i = 0; i < upperText.length; i++) {
+           const char = upperText[i]
+           const morseSymbols = MORSE_CODE[char]
+
+           if (!morseSymbols) continue // Skip unknown characters
+
+           if (morseSymbols === ' ') {
+             // Word gap (already includes letter gap from previous letter)
+             await sleep(WORD_GAP - LETTER_GAP)
+           } else {
+             // Transmit each dit or dah
+             for (let j = 0; j < morseSymbols.length; j++) {
+               const symbol = morseSymbols[j]
+
+               if (symbol === '.') {
+                 await transmitDit()
+               } else if (symbol === '-') {
+                 await transmitDah()
+               }
+
+               // Gap between symbols within the same letter
+               if (j < morseSymbols.length - 1) {
+                 await sleep(INTER_SYMBOL_GAP)
+               }
+             }
+
+             // Gap between letters
+             if (i < upperText.length - 1 && upperText[i + 1] !== ' ') {
+               await sleep(LETTER_GAP)
+             }
+           }
+         }
+
+         morseTransmitting = false
+       }
+
+       // Transmit a dit
+       function transmitDit() {
+         return new Promise((resolve) => {
+           // Send WebSocket message
+           sendWebSocketMessage(1)
+
+           // Update visualization
+           if (currentUserId) {
+             updateUserMorse(currentUserId, true)
+           }
+
+           // Effects
+           startBackgroundColor()
+           startAudio(currentUserId)
+
+           // Auto-release after DIT_DURATION
+           setTimeout(() => {
+             sendWebSocketMessage(0)
+             if (currentUserId) {
+               updateUserMorse(currentUserId, false)
+             }
+             stopBackgroundColor()
+             stopAudio(currentUserId)
+             resolve()
+           }, DIT_DURATION)
+         })
+       }
+
+       // Transmit a dah
+       function transmitDah() {
+         return new Promise((resolve) => {
+           // Send WebSocket message
+           sendWebSocketMessage(1)
+
+           // Update visualization
+           if (currentUserId) {
+             updateUserMorse(currentUserId, true)
+           }
+
+           // Effects
+           startBackgroundColor()
+           startAudio(currentUserId)
+
+           // Auto-release after DAH_DURATION
+           setTimeout(() => {
+             sendWebSocketMessage(0)
+             if (currentUserId) {
+               updateUserMorse(currentUserId, false)
+             }
+             stopBackgroundColor()
+             stopAudio(currentUserId)
+             resolve()
+           }, DAH_DURATION)
+         })
+       }
+
+       // Sleep utility
+       function sleep(ms) {
+         return new Promise(resolve => setTimeout(resolve, ms))
        }
     </script>
 </body>
