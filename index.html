@@ -225,8 +225,6 @@
            }
            
            websocket.onmessage = function(event) {
-             console.log('WebSocket message received:', event.data)
-
              // Handle JSON messages
              if (typeof event.data === 'string') {
                try {
@@ -246,22 +244,17 @@
 
        // Handle different types of WebSocket messages
        function handleWebSocketMessage(message) {
-         console.log('Handling message:', message)
-
          switch (message.type) {
            case 'user_info':
              currentUserId = message.user_id
-             console.log('Set current user ID:', currentUserId)
              break
 
            case 'user_list':
              connectedUsers = message.users
-             console.log('Updated user list:', connectedUsers)
              updateUserListDisplay()
              break
 
            case 'space_event':
-             console.log('Space event from:', message.user_id, 'value:', message.value)
              if (message.value === 1) {
                handleRemoteSpacePress(message.user_id)
              } else if (message.value === 0) {
@@ -278,10 +271,8 @@
        function toggleUserMute(userId) {
          if (mutedUsers.has(userId)) {
            mutedUsers.delete(userId)
-           console.log(`Unmuted user: ${userId}`)
          } else {
            mutedUsers.add(userId)
-           console.log(`Muted user: ${userId}`)
            // Stop any currently playing audio for this user
            stopAudio(userId)
            // Clear any existing morse segments for this user
@@ -432,10 +423,7 @@
        function updateDecodedTextDisplay(userId, text) {
          const textDiv = document.getElementById(`decoded-text-${userId}`)
          if (textDiv) {
-           console.log(`${userId}: Updating display with "${text}"`)
            textDiv.textContent = text
-         } else {
-           console.log(`${userId}: Text div not found!`)
          }
        }
 
@@ -443,15 +431,11 @@
        function decodeMorsePattern(userId) {
          const pattern = userMorsePatterns[userId]
          if (!pattern) {
-           console.log(`${userId}: decodeMorsePattern called but pattern is empty`)
            return
          }
 
-         console.log(`${userId}: ===== DECODING PATTERN "${pattern}" =====`)
          const letter = MORSE_TO_LETTER[pattern]
          if (letter) {
-           console.log(`${userId}: ✓ Decoded to "${letter}"`)
-
            // Add letter to decoded text
            const currentLength = userDecodedText[userId].length
            userDecodedText[userId] += letter
@@ -465,15 +449,9 @@
                updateDecodedTextDisplay(userId, userDecodedText[userId])
              }
            }, LETTER_READ_TIME)
-
-           console.log(`${userId}: Full decoded text: "${userDecodedText[userId]}"`)
-         } else {
-           console.log(`${userId}: ✗ Pattern "${pattern}" not recognized`)
-           console.log(`${userId}: Available patterns:`, Object.keys(MORSE_TO_LETTER).slice(0, 10))
          }
 
          // Clear pattern for next letter
-         console.log(`${userId}: Clearing pattern`)
          userMorsePatterns[userId] = ''
        }
 
@@ -497,12 +475,10 @@
            // Check gap since last signal to determine if this is a new letter or word
            if (userLastSignalTime[userId]) {
              const gapDuration = now - userLastSignalTime[userId]
-             console.log(`${userId}: Gap since last signal: ${gapDuration}ms`)
 
              // Gap of 5+ units (300ms+) = word space
              // More lenient threshold to catch word gaps reliably
              if (gapDuration >= DIT_UNIT * 4.5) {
-               console.log(`${userId}: Word gap detected (${gapDuration}ms >= ${DIT_UNIT * 4.5}ms)`)
                // Decode current pattern first if there is one
                if (userMorsePatterns[userId]) {
                  decodeMorsePattern(userId)
@@ -519,7 +495,6 @@
              }
              // Gap of 3+ units (180ms+) = new letter, decode previous pattern
              else if (gapDuration >= DIT_UNIT * 2.5 && userMorsePatterns[userId]) {
-               console.log(`${userId}: Letter gap detected (${gapDuration}ms), decoding pattern "${userMorsePatterns[userId]}"`)
                decodeMorsePattern(userId)
              }
            }
@@ -546,10 +521,8 @@
            // Threshold: < 2 units (120ms) = dit, >= 2 units = dah
            if (signalDuration < DIT_UNIT * 2) {
              userMorsePatterns[userId] += '.'
-             console.log(`${userId}: dit (${signalDuration}ms) - pattern: ${userMorsePatterns[userId]}`)
            } else {
              userMorsePatterns[userId] += '-'
-             console.log(`${userId}: dah (${signalDuration}ms) - pattern: ${userMorsePatterns[userId]}`)
            }
 
            // Set timeout to decode pattern if no new signal comes
@@ -557,7 +530,6 @@
            clearTimeout(userMorseTimeouts[userId])
            userMorseTimeouts[userId] = setTimeout(() => {
              if (userMorsePatterns[userId]) {
-               console.log(`${userId}: ⏰ TIMEOUT reached after ${DIT_UNIT * 3}ms, decoding pattern`)
                decodeMorsePattern(userId)
              }
            }, DIT_UNIT * 3) // 180ms = 3 dit units
@@ -622,13 +594,9 @@
 
        // Send WebSocket message as binary boolean
        function sendWebSocketMessage(value) {
-         console.log('Attempting to send WebSocket message:', value, 'Connected:', websocketConnected, 'ReadyState:', websocket?.readyState)
          if (websocketConnected && websocket && websocket.readyState === WebSocket.OPEN) {
            const buffer = new Uint8Array([value])
            websocket.send(buffer)
-           console.log('WebSocket message sent successfully:', value)
-         } else {
-           console.log('WebSocket not ready to send. Connected:', websocketConnected, 'ReadyState:', websocket?.readyState)
          }
        }
        
@@ -661,7 +629,6 @@
          const frequency = 220 + (Math.abs(hash) % 661) // 661 = 880 - 220 + 1
          userFrequencies[userId] = frequency
 
-         console.log(`Generated frequency for ${userId}: ${frequency}Hz`)
          return frequency
        }
        
@@ -776,8 +743,6 @@
        
        // Remote user visualization functions
        function handleRemoteSpacePress(userId) {
-         console.log('Remote space press from:', userId)
-
          // Update user's morse visualization
          updateUserMorse(userId, true)
 
@@ -786,8 +751,6 @@
        }
 
        function handleRemoteSpaceRelease(userId) {
-         console.log('Remote space release from:', userId)
-
          // Update user's morse visualization
          updateUserMorse(userId, false)
 
@@ -1055,17 +1018,13 @@
 
             // Handle spaces - create word gap
             if (char === ' ') {
-              console.log(`Transmission: Word space detected, sleeping for ${WORD_GAP}ms`)
               // Full word gap (not subtracting letter gap - we need the FULL gap between words)
               await sleep(WORD_GAP)
-              console.log(`Transmission: Word space complete`)
               continue
             }
 
             const morseSymbols = MORSE_CODE[char]
             if (!morseSymbols) continue // Skip unknown characters
-
-            console.log(`Transmission: Sending "${char}" as ${morseSymbols}`)
 
             // Transmit each dit or dah
             for (let j = 0; j < morseSymbols.length; j++) {
@@ -1085,15 +1044,7 @@
 
             // Gap between letters
             if (i < upperText.length - 1) {
-              if (upperText[i + 1] === ' ') {
-                // Before a space: add letter gap first, THEN the space will add more
-                console.log(`Transmission: Letter gap before space (${LETTER_GAP}ms)`)
-                await sleep(LETTER_GAP)
-              } else {
-                // Before another letter: normal letter gap
-                console.log(`Transmission: Letter gap (${LETTER_GAP}ms)`)
-                await sleep(LETTER_GAP)
-              }
+              await sleep(LETTER_GAP)
             }
           }
         } finally {
