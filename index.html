@@ -353,9 +353,14 @@
            userMorsePatterns[userId] = ''
            userLastSignalTime[userId] = 0
            userSignalStartTime[userId] = 0
-           userDecodedText[userId] = ''
-         })
-       }
+          userDecodedText[userId] = ''
+        })
+        
+        // Reposition all decoded text elements after rebuilding user items
+        setTimeout(() => {
+          repositionAllDecodedTexts()
+        }, 0)
+      }
 
        // Create a morse canvas for a specific user
        function createUserMorseCanvas(userId, index) {
@@ -383,20 +388,45 @@
          userCanvases[userId] = { canvas, ctx }
        }
 
-       // Create decoded text display for a specific user
-       function createUserDecodedText(userId, index) {
-         const textDiv = document.createElement('div')
-         textDiv.className = 'user-decoded-text'
-         textDiv.id = `decoded-text-${userId}`
+      // Create decoded text display for a specific user
+      function createUserDecodedText(userId, index) {
+        const textDiv = document.createElement('div')
+        textDiv.className = 'user-decoded-text'
+        textDiv.id = `decoded-text-${userId}`
 
-         // Position it at the same vertical level as the user's row
-         const userItem = document.getElementById(`user-${userId}`)
-         const rect = userItem.getBoundingClientRect()
-         textDiv.style.top = `${rect.top + window.scrollY}px`
+        // Append to body so it can be positioned on the left side
+        document.body.appendChild(textDiv)
+        
+        // Position it initially
+        repositionDecodedText(userId)
+      }
 
-         // Append to body so it can be positioned on the left side
-         document.body.appendChild(textDiv)
-       }
+      // Reposition decoded text for a specific user
+      function repositionDecodedText(userId) {
+        const textDiv = document.getElementById(`decoded-text-${userId}`)
+        const userItem = document.getElementById(`user-${userId}`)
+        
+        if (textDiv && userItem) {
+          const rect = userItem.getBoundingClientRect()
+          textDiv.style.top = `${rect.top + window.scrollY}px`
+        }
+      }
+
+      // Reposition all decoded text elements
+      function repositionAllDecodedTexts() {
+        Object.keys(userDecodedText).forEach(userId => {
+          repositionDecodedText(userId)
+        })
+      }
+
+      // Throttled version for performance during rapid events
+      let repositionTimeout = null
+      function throttledRepositionAllDecodedTexts() {
+        if (repositionTimeout) {
+          clearTimeout(repositionTimeout)
+        }
+        repositionTimeout = setTimeout(repositionAllDecodedTexts, 16) // ~60fps
+      }
 
        // Update decoded text display for a user
        function updateDecodedTextDisplay(userId, text) {
@@ -636,9 +666,38 @@
        }
        
        // Initialize WebSocket on page load
-       document.addEventListener('DOMContentLoaded', function() {
-         initWebSocket()
-       })
+      document.addEventListener('DOMContentLoaded', function() {
+        initWebSocket()
+        
+        // Add event listeners for repositioning decoded text
+        window.addEventListener('resize', throttledRepositionAllDecodedTexts)
+        window.addEventListener('scroll', throttledRepositionAllDecodedTexts)
+        
+        // Add MutationObserver to watch for DOM changes that might affect positioning
+        const observer = new MutationObserver((mutations) => {
+          let shouldReposition = false
+          mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && 
+                (mutation.target.id === 'userList' || 
+                 Array.from(mutation.addedNodes).some(node => 
+                   node.nodeType === 1 && node.id && node.id.startsWith('user-')))) {
+              shouldReposition = true
+            }
+          })
+          if (shouldReposition) {
+            setTimeout(repositionAllDecodedTexts, 0)
+          }
+        })
+        
+        // Start observing the user list container
+        const userListElement = document.getElementById('userList')
+        if (userListElement) {
+          observer.observe(userListElement, {
+            childList: true,
+            subtree: true
+          })
+        }
+      })
        
        // Initialize audio context (will be created on first user interaction)
        function initAudioContext() {
