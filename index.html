@@ -72,18 +72,17 @@
         position: relative;
       }
 
-       .center-circle {
-         position: fixed;
-         top: 50%;
-         left: 50%;
-         transform: translate(-50%, -50%);
-         width: 100px;
-         height: 100px;
-         background-color: #006600;
-         border-radius: 50%;
-         z-index: 1000;
-         display: none;
-       }
+      .morse-legend {
+        text-align: center;
+        color: #808080;
+        font-family: 'Courier New', monospace;
+        font-size: 12px;
+        z-index: 0;
+        pointer-events: none;
+        white-space: pre;
+        opacity: 0.6;
+        line-height: 1.4;
+      }
        
        .morse-canvas {
          position: fixed;
@@ -99,7 +98,30 @@
 </head>
 <body>
     <code><pre>[ SPACE ] beep</pre></code>
-    <div class="center-circle" id="centerCircle"></div>
+    <div class="morse-legend">
+-----------------------------------------------------------
+| A             .-                  U             ..-     |
+| B             -...                V             ...-    |
+| C             -.-.                W             .--     |
+| D             -..                 X             -..-    |
+| E             .                   Y             -.--    |
+| F             ..-.                Z             --..    |
+| G             --.                 1             .----   |
+| H             ....                2             ..---   |
+| I             ..                  3             ...--   |
+| J             .---                4             ....-   |
+| K             -.-                 5             .....   |
+| L             .-..                6             -....   |
+| M             --                  7             --...   |
+| N             -.                  8             ---..   |
+| O             ---                 9             ----.   |
+| P             .--.                0             -----   |
+| Q             --.-                .             .-.-.-  |
+| R             .-.                 ,             --..--  |
+| S             ...                 ?             ..--..  |
+| T             -                   /             -..-.   |
+-----------------------------------------------------------
+    </div>
 
     <div class="user-list" id="userList">
       <!-- User list will be populated here -->
