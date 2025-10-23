@@ -32,10 +32,19 @@
         margin-bottom: 0.2rem;
         font-size: 14px;
         font-family: 'Courier New', monospace;
+        cursor: pointer;
+      }
+
+      .user-item.current-user {
+        cursor: default;
       }
 
       .user-item:last-child {
         margin-bottom: 0;
+      }
+
+      .user-item:hover:not(.current-user) .user-name {
+        opacity: 0.7;
       }
 
       .user-name {
@@ -47,6 +56,11 @@
       .current-user .user-name {
         font-weight: bold;
         color: #ffffff;
+      }
+
+      .user-item.muted .user-name {
+        color: #555555;
+        text-decoration: line-through;
       }
 
       .user-morse-canvas {
@@ -169,6 +183,7 @@
        let userMorseStates = {} // Track morse state for each user
        let userMorseTimeouts = {} // Track timeouts for morse bars
        let userFrequencies = {} // Track audio frequency for each user
+       let mutedUsers = new Set() // Track muted users
        
        // Initialize WebSocket connection
        function initWebSocket() {
@@ -240,6 +255,28 @@
          }
        }
 
+       // Toggle mute for a user
+       function toggleUserMute(userId) {
+         if (mutedUsers.has(userId)) {
+           mutedUsers.delete(userId)
+           console.log(`Unmuted user: ${userId}`)
+         } else {
+           mutedUsers.add(userId)
+           console.log(`Muted user: ${userId}`)
+           // Stop any currently playing audio for this user
+           stopAudio(userId)
+           // Clear any existing morse segments for this user
+           if (userMorseSegments[userId]) {
+             userMorseSegments[userId] = []
+           }
+           // Stop any active drawing state
+           userDrawingStates[userId] = false
+           userMorseStates[userId] = false
+         }
+         // Update the display to reflect muted state
+         updateUserListDisplay()
+       }
+
        // Update the user list display
        function updateUserListDisplay() {
          const userListElement = document.getElementById('userList')
@@ -264,7 +301,8 @@
 
          sortedUsers.forEach((userId, index) => {
            const userItem = document.createElement('div')
-           userItem.className = `user-item ${userId === currentUserId ? 'current-user' : ''}`
+           const isMuted = mutedUsers.has(userId)
+           userItem.className = `user-item ${userId === currentUserId ? 'current-user' : ''} ${isMuted ? 'muted' : ''}`
            userItem.id = `user-${userId}`
 
            const userName = document.createElement('div')
@@ -273,6 +311,15 @@
 
            userItem.appendChild(userName)
            userListElement.appendChild(userItem)
+
+           // Add click handler to toggle mute (except for current user)
+           if (userId !== currentUserId) {
+             userItem.addEventListener('click', (event) => {
+               event.stopPropagation()
+               event.preventDefault()
+               toggleUserMute(userId)
+             })
+           }
 
            // Create canvas for this user
            createUserMorseCanvas(userId, index)
@@ -313,6 +360,9 @@
        // Update morse visualization for a specific user
        function updateUserMorse(userId, isPressed) {
          if (!userCanvases[userId]) return
+
+         // Don't draw for muted users (except current user)
+         if (mutedUsers.has(userId) && userId !== currentUserId) return
 
          if (isPressed) {
            userMorseStates[userId] = true
@@ -460,6 +510,11 @@
        }
        
        function startAudio(userId = currentUserId) {
+         // Don't play audio for muted users
+         if (mutedUsers.has(userId)) {
+           return
+         }
+
          if (!userOscillators[userId]) {
            initAudioContext()
            if (audioContext.state === 'suspended') {
@@ -603,6 +658,10 @@
 
       // Mouse events for desktop
       document.addEventListener('mousedown', function(event) {
+        // Don't trigger beep if clicking on user items or input
+        if (event.target.closest('.user-item') || event.target.closest('.morse-input-container')) {
+          return
+        }
         if (isMousePressed) return // Prevent double-press
         isMousePressed = true
         event.preventDefault()
@@ -618,11 +677,19 @@
 
       // Touch events for mobile
       document.addEventListener('touchstart', function(event) {
+        // Don't trigger beep if touching user items or input
+        if (event.target.closest('.user-item') || event.target.closest('.morse-input-container')) {
+          return
+        }
         event.preventDefault()
         handleSpacePress()
       })
 
       document.addEventListener('touchend', function(event) {
+        // Don't trigger beep if touching user items or input
+        if (event.target.closest('.user-item') || event.target.closest('.morse-input-container')) {
+          return
+        }
         event.preventDefault()
         handleSpaceRelease()
       })
