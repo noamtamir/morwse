@@ -4,21 +4,9 @@ import asyncio
 import json
 import random
 import string
-import os
 from typing import List, Dict
-import redis.asyncio as redis
 
 app = FastAPI()
-
-# Redis connection
-redis_client = None
-
-async def get_redis():
-    global redis_client
-    if redis_client is None:
-        redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
-        redis_client = await redis.from_url(redis_url, decode_responses=True)
-    return redis_client
 
 # Generate random username
 def generate_username():
@@ -30,17 +18,11 @@ def generate_username():
 class ConnectionManager:
     def __init__(self):
         self.active_connections: Dict[WebSocket, str] = {}  # websocket -> user_id
-        self.redis_key = "morwse:active_users"
 
     async def connect(self, websocket: WebSocket):
         await websocket.accept()
         user_id = generate_username()
         self.active_connections[websocket] = user_id
-
-        # Store user in Redis for persistence across deployments
-        r = await get_redis()
-        await r.sadd(self.redis_key, user_id)
-
         print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] WebSocket connected: {user_id} (Total: {len(self.active_connections)})")
 
         # Send initial user info and user list to the new client
@@ -49,15 +31,10 @@ class ConnectionManager:
 
         return user_id
 
-    async def disconnect(self, websocket: WebSocket):
+    def disconnect(self, websocket: WebSocket):
         if websocket in self.active_connections:
             user_id = self.active_connections[websocket]
             del self.active_connections[websocket]
-
-            # Remove user from Redis
-            r = await get_redis()
-            await r.srem(self.redis_key, user_id)
-
             print(f"[{datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')[:-3]}] WebSocket disconnected: {user_id} (Total: {len(self.active_connections)})")
             # Broadcast updated user list to remaining clients
             asyncio.create_task(self.broadcast_user_list())
@@ -71,11 +48,8 @@ class ConnectionManager:
         await websocket.send_text(json.dumps(message))
 
     async def broadcast_user_list(self):
-        """Broadcast current user list to all clients (from Redis)"""
-        # Get user list from Redis for persistence
-        r = await get_redis()
-        user_list = list(await r.smembers(self.redis_key))
-
+        """Broadcast current user list to all clients"""
+        user_list = list(self.active_connections.values())
         message = {
             "type": "user_list",
             "users": user_list
@@ -90,10 +64,7 @@ class ConnectionManager:
                 print(f"Failed to send user list to client: {e}")
                 # Remove failed connection
                 if websocket in self.active_connections:
-                    user_id = self.active_connections[websocket]
                     del self.active_connections[websocket]
-                    # Also remove from Redis
-                    await r.srem(self.redis_key, user_id)
 
     async def broadcast_space_event(self, message: bytes, sender: WebSocket):
         """Broadcast space bar event to all connected clients except the sender"""
@@ -136,10 +107,10 @@ async def websocket_endpoint(websocket: WebSocket):
             await manager.broadcast_space_event(data, websocket)
 
     except WebSocketDisconnect:
-        await manager.disconnect(websocket)
+        manager.disconnect(websocket)
     except Exception as e:
         print(f"WebSocket error: {e}")
-        await manager.disconnect(websocket)
+        manager.disconnect(websocket)
 
 if __name__ == "__main__":
     import uvicorn
