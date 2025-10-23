@@ -75,6 +75,25 @@
         margin-right: 10px;
       }
 
+      .user-decoded-text {
+        position: fixed;
+        left: 10px;
+        font-family: 'Courier New', monospace;
+        font-size: 14px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 998;
+        transition: opacity 0.5s ease-out;
+      }
+
+      .current-user .user-decoded-text {
+        color: #ffffff;
+      }
+
+      .user-item:not(.current-user) .user-decoded-text {
+        color: #00ff00;
+      }
+
       .user-item {
         position: relative;
       }
@@ -324,10 +343,17 @@
            // Create canvas for this user
            createUserMorseCanvas(userId, index)
 
+           // Create decoded text display for this user
+           createUserDecodedText(userId, index)
+
            // Initialize morse state for this user
            userMorseStates[userId] = false
            userMorseSegments[userId] = []
            userDrawingStates[userId] = false
+           userMorsePatterns[userId] = ''
+           userLastSignalTime[userId] = 0
+           userSignalStartTime[userId] = 0
+           userDecodedText[userId] = ''
          })
        }
 
@@ -357,6 +383,77 @@
          userCanvases[userId] = { canvas, ctx }
        }
 
+       // Create decoded text display for a specific user
+       function createUserDecodedText(userId, index) {
+         const textDiv = document.createElement('div')
+         textDiv.className = 'user-decoded-text'
+         textDiv.id = `decoded-text-${userId}`
+
+         // Position it at the same vertical level as the user's row
+         const userItem = document.getElementById(`user-${userId}`)
+         const rect = userItem.getBoundingClientRect()
+         textDiv.style.top = `${rect.top + window.scrollY}px`
+
+         // Append to body so it can be positioned on the left side
+         document.body.appendChild(textDiv)
+       }
+
+       // Update decoded text display for a user
+       function updateDecodedTextDisplay(userId, text) {
+         const textDiv = document.getElementById(`decoded-text-${userId}`)
+         if (textDiv) {
+           console.log(`${userId}: Updating display with "${text}"`)
+           textDiv.textContent = text
+           textDiv.style.opacity = '1'
+         } else {
+           console.log(`${userId}: Text div not found!`)
+         }
+       }
+
+       // Fade out decoded text after delay
+       function fadeOutDecodedText(userId, delay = 3000) {
+         setTimeout(() => {
+           const textDiv = document.getElementById(`decoded-text-${userId}`)
+           if (textDiv) {
+             textDiv.style.opacity = '0'
+             // Clear text after fade completes
+             setTimeout(() => {
+               if (textDiv && textDiv.style.opacity === '0') {
+                 textDiv.textContent = ''
+                 userDecodedText[userId] = ''
+               }
+             }, 500) // Match CSS transition duration
+           }
+         }, delay)
+       }
+
+       // Decode morse pattern and update display
+       function decodeMorsePattern(userId) {
+         const pattern = userMorsePatterns[userId]
+         if (!pattern) {
+           console.log(`${userId}: decodeMorsePattern called but pattern is empty`)
+           return
+         }
+
+         console.log(`${userId}: ===== DECODING PATTERN "${pattern}" =====`)
+         const letter = MORSE_TO_LETTER[pattern]
+         if (letter) {
+           console.log(`${userId}: ✓ Decoded to "${letter}"`)
+           userDecodedText[userId] += letter
+           console.log(`${userId}: Full decoded text: "${userDecodedText[userId]}"`)
+           updateDecodedTextDisplay(userId, userDecodedText[userId])
+           // Fade out after 3 seconds
+           fadeOutDecodedText(userId, 3000)
+         } else {
+           console.log(`${userId}: ✗ Pattern "${pattern}" not recognized`)
+           console.log(`${userId}: Available patterns:`, Object.keys(MORSE_TO_LETTER).slice(0, 10))
+         }
+
+         // Clear pattern for next letter
+         console.log(`${userId}: Clearing pattern`)
+         userMorsePatterns[userId] = ''
+       }
+
        // Update morse visualization for a specific user
        function updateUserMorse(userId, isPressed) {
          if (!userCanvases[userId]) return
@@ -364,16 +461,45 @@
          // Don't draw for muted users (except current user)
          if (mutedUsers.has(userId) && userId !== currentUserId) return
 
+         const now = Date.now()
+
          if (isPressed) {
            userMorseStates[userId] = true
            userDrawingStates[userId] = true
+           userSignalStartTime[userId] = now
+
+           // Cancel any pending timeout since a new signal is starting
+           clearTimeout(userMorseTimeouts[userId])
+
+           // Check gap since last signal to determine if this is a new letter or word
+           if (userLastSignalTime[userId] && userMorsePatterns[userId]) {
+             const gapDuration = now - userLastSignalTime[userId]
+             console.log(`${userId}: Gap since last signal: ${gapDuration}ms`)
+
+             // Gap of 7+ units (420ms+) = word space
+             if (gapDuration >= DIT_UNIT * 6.5) {
+               console.log(`${userId}: Word gap detected`)
+               // Decode current pattern first
+               if (userMorsePatterns[userId]) {
+                 decodeMorsePattern(userId)
+               }
+               userDecodedText[userId] += ' '
+               updateDecodedTextDisplay(userId, userDecodedText[userId])
+             }
+             // Gap of 3+ units (180ms+) = new letter, decode previous pattern
+             else if (gapDuration >= DIT_UNIT * 2.5) {
+               console.log(`${userId}: Letter gap detected (${gapDuration}ms), decoding pattern "${userMorsePatterns[userId]}"`)
+               decodeMorsePattern(userId)
+             }
+           }
 
            // Create a new segment at the right side
            const newSegment = {
              x: window.innerWidth - 20,
              width: 2,
              isActive: true,
-             userId: userId
+             userId: userId,
+             startTime: now
            }
 
            userMorseSegments[userId].push(newSegment)
@@ -381,6 +507,29 @@
          } else {
            userMorseStates[userId] = false
            userDrawingStates[userId] = false
+           userLastSignalTime[userId] = now
+
+           // Calculate signal duration to determine dit or dah
+           const signalDuration = now - userSignalStartTime[userId]
+
+           // Threshold: < 2 units (120ms) = dit, >= 2 units = dah
+           if (signalDuration < DIT_UNIT * 2) {
+             userMorsePatterns[userId] += '.'
+             console.log(`${userId}: dit (${signalDuration}ms) - pattern: ${userMorsePatterns[userId]}`)
+           } else {
+             userMorsePatterns[userId] += '-'
+             console.log(`${userId}: dah (${signalDuration}ms) - pattern: ${userMorsePatterns[userId]}`)
+           }
+
+           // Set timeout to decode pattern if no new signal comes
+           // Wait 3 units (letter gap) before decoding
+           clearTimeout(userMorseTimeouts[userId])
+           userMorseTimeouts[userId] = setTimeout(() => {
+             if (userMorsePatterns[userId]) {
+               console.log(`${userId}: ⏰ TIMEOUT reached after ${DIT_UNIT * 3}ms, decoding pattern`)
+               decodeMorsePattern(userId)
+             }
+           }, DIT_UNIT * 3) // 180ms = 3 dit units
          }
        }
 
@@ -594,11 +743,14 @@
       const DIT_KEY = 'Period' // . key
       const DAH_KEY = 'Minus' // - key
       const INPUT_KEY = 'KeyI' // i key
-      const DIT_DURATION = 60 // milliseconds
-      const DAH_DURATION = 180 // milliseconds (3x dit)
-      const INTER_SYMBOL_GAP = 60 // Gap between dit/dah within a letter
-      const LETTER_GAP = 180 // Gap between letters (3x dit)
-      const WORD_GAP = 420 // Gap between words (7x dit)
+
+      // Morse code timing (based on 1 dit unit = 60ms)
+      const DIT_UNIT = 60 // Base time unit
+      const DIT_DURATION = DIT_UNIT // 1 unit
+      const DAH_DURATION = DIT_UNIT * 3 // 3 units (180ms)
+      const INTER_SYMBOL_GAP = DIT_UNIT // 1 unit gap within letter (60ms)
+      const LETTER_GAP = DIT_UNIT * 3 // 3 units between letters (180ms)
+      const WORD_GAP = DIT_UNIT * 7 // 7 units between words (420ms)
 
       let ditTimeout = null
       let dahTimeout = null
@@ -618,6 +770,21 @@
         '9': '----.', '0': '-----', '.': '.-.-.-', ',': '--..--', '?': '..--..',
         '/': '-..-.', ' ': ' '
       }
+
+      // Reverse morse code lookup (morse to letter)
+      const MORSE_TO_LETTER = {}
+      Object.keys(MORSE_CODE).forEach(letter => {
+        const morse = MORSE_CODE[letter]
+        if (morse !== ' ') {
+          MORSE_TO_LETTER[morse] = letter
+        }
+      })
+
+      // Morse decoder state per user
+      let userMorsePatterns = {} // Current morse pattern being built
+      let userLastSignalTime = {} // Last signal timestamp
+      let userSignalStartTime = {} // When signal started (for duration)
+      let userDecodedText = {} // Decoded text for each user
 
       // Space bar behavior based on current mode
       document.addEventListener('keydown', function (event) {
