@@ -404,27 +404,9 @@
          if (textDiv) {
            console.log(`${userId}: Updating display with "${text}"`)
            textDiv.textContent = text
-           textDiv.style.opacity = '1'
          } else {
            console.log(`${userId}: Text div not found!`)
          }
-       }
-
-       // Fade out decoded text after delay
-       function fadeOutDecodedText(userId, delay = 3000) {
-         setTimeout(() => {
-           const textDiv = document.getElementById(`decoded-text-${userId}`)
-           if (textDiv) {
-             textDiv.style.opacity = '0'
-             // Clear text after fade completes
-             setTimeout(() => {
-               if (textDiv && textDiv.style.opacity === '0') {
-                 textDiv.textContent = ''
-                 userDecodedText[userId] = ''
-               }
-             }, 500) // Match CSS transition duration
-           }
-         }, delay)
        }
 
        // Decode morse pattern and update display
@@ -439,11 +421,22 @@
          const letter = MORSE_TO_LETTER[pattern]
          if (letter) {
            console.log(`${userId}: ✓ Decoded to "${letter}"`)
+
+           // Add letter to decoded text
+           const currentLength = userDecodedText[userId].length
            userDecodedText[userId] += letter
-           console.log(`${userId}: Full decoded text: "${userDecodedText[userId]}"`)
            updateDecodedTextDisplay(userId, userDecodedText[userId])
-           // Fade out after 3 seconds
-           fadeOutDecodedText(userId, 3000)
+
+           // Schedule this specific letter to fade out after read time
+           setTimeout(() => {
+             // Remove the first character (this letter)
+             if (userDecodedText[userId].length > 0) {
+               userDecodedText[userId] = userDecodedText[userId].substring(1)
+               updateDecodedTextDisplay(userId, userDecodedText[userId])
+             }
+           }, LETTER_READ_TIME)
+
+           console.log(`${userId}: Full decoded text: "${userDecodedText[userId]}"`)
          } else {
            console.log(`${userId}: ✗ Pattern "${pattern}" not recognized`)
            console.log(`${userId}: Available patterns:`, Object.keys(MORSE_TO_LETTER).slice(0, 10))
@@ -472,22 +465,30 @@
            clearTimeout(userMorseTimeouts[userId])
 
            // Check gap since last signal to determine if this is a new letter or word
-           if (userLastSignalTime[userId] && userMorsePatterns[userId]) {
+           if (userLastSignalTime[userId]) {
              const gapDuration = now - userLastSignalTime[userId]
              console.log(`${userId}: Gap since last signal: ${gapDuration}ms`)
 
-             // Gap of 7+ units (420ms+) = word space
-             if (gapDuration >= DIT_UNIT * 6.5) {
-               console.log(`${userId}: Word gap detected`)
-               // Decode current pattern first
+             // Gap of 5+ units (300ms+) = word space
+             // More lenient threshold to catch word gaps reliably
+             if (gapDuration >= DIT_UNIT * 4.5) {
+               console.log(`${userId}: Word gap detected (${gapDuration}ms >= ${DIT_UNIT * 4.5}ms)`)
+               // Decode current pattern first if there is one
                if (userMorsePatterns[userId]) {
                  decodeMorsePattern(userId)
                }
+               // Add space with its own fade timeout
                userDecodedText[userId] += ' '
                updateDecodedTextDisplay(userId, userDecodedText[userId])
+               setTimeout(() => {
+                 if (userDecodedText[userId].length > 0) {
+                   userDecodedText[userId] = userDecodedText[userId].substring(1)
+                   updateDecodedTextDisplay(userId, userDecodedText[userId])
+                 }
+               }, LETTER_READ_TIME)
              }
              // Gap of 3+ units (180ms+) = new letter, decode previous pattern
-             else if (gapDuration >= DIT_UNIT * 2.5) {
+             else if (gapDuration >= DIT_UNIT * 2.5 && userMorsePatterns[userId]) {
                console.log(`${userId}: Letter gap detected (${gapDuration}ms), decoding pattern "${userMorsePatterns[userId]}"`)
                decodeMorsePattern(userId)
              }
@@ -784,7 +785,8 @@
       let userMorsePatterns = {} // Current morse pattern being built
       let userLastSignalTime = {} // Last signal timestamp
       let userSignalStartTime = {} // When signal started (for duration)
-      let userDecodedText = {} // Decoded text for each user
+      let userDecodedText = {} // Decoded text string for each user
+      const LETTER_READ_TIME = 5000 // How long to show each letter before fading (5 seconds)
 
       // Space bar behavior based on current mode
       document.addEventListener('keydown', function (event) {
@@ -991,32 +993,46 @@
 
           for (let i = 0; i < upperText.length; i++) {
             const char = upperText[i]
-            const morseSymbols = MORSE_CODE[char]
 
+            // Handle spaces - create word gap
+            if (char === ' ') {
+              console.log(`Transmission: Word space detected, sleeping for ${WORD_GAP}ms`)
+              // Full word gap (not subtracting letter gap - we need the FULL gap between words)
+              await sleep(WORD_GAP)
+              console.log(`Transmission: Word space complete`)
+              continue
+            }
+
+            const morseSymbols = MORSE_CODE[char]
             if (!morseSymbols) continue // Skip unknown characters
 
-            if (morseSymbols === ' ') {
-              // Word gap (already includes letter gap from previous letter)
-              await sleep(WORD_GAP - LETTER_GAP)
-            } else {
-              // Transmit each dit or dah
-              for (let j = 0; j < morseSymbols.length; j++) {
-                const symbol = morseSymbols[j]
+            console.log(`Transmission: Sending "${char}" as ${morseSymbols}`)
 
-                if (symbol === '.') {
-                  await transmitDit()
-                } else if (symbol === '-') {
-                  await transmitDah()
-                }
+            // Transmit each dit or dah
+            for (let j = 0; j < morseSymbols.length; j++) {
+              const symbol = morseSymbols[j]
 
-                // Gap between symbols within the same letter
-                if (j < morseSymbols.length - 1) {
-                  await sleep(INTER_SYMBOL_GAP)
-                }
+              if (symbol === '.') {
+                await transmitDit()
+              } else if (symbol === '-') {
+                await transmitDah()
               }
 
-              // Gap between letters
-              if (i < upperText.length - 1 && upperText[i + 1] !== ' ') {
+              // Gap between symbols within the same letter
+              if (j < morseSymbols.length - 1) {
+                await sleep(INTER_SYMBOL_GAP)
+              }
+            }
+
+            // Gap between letters
+            if (i < upperText.length - 1) {
+              if (upperText[i + 1] === ' ') {
+                // Before a space: add letter gap first, THEN the space will add more
+                console.log(`Transmission: Letter gap before space (${LETTER_GAP}ms)`)
+                await sleep(LETTER_GAP)
+              } else {
+                // Before another letter: normal letter gap
+                console.log(`Transmission: Letter gap (${LETTER_GAP}ms)`)
                 await sleep(LETTER_GAP)
               }
             }
