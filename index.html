@@ -14,16 +14,9 @@
       }
 
       pre {
-        text-align: left;
+        text-align: center;
         margin: 0;
-        color: #808080;
-        float: left;
-      }
-
-      .mode-display {
-        position: fixed;
-        top: 1rem;
-        right: 1rem;
+        color: #707070;
       }
 
       .user-list {
@@ -71,18 +64,6 @@
       .user-item {
         position: relative;
       }
-
-      .morse-legend {
-        text-align: center;
-        color: #808080;
-        font-family: 'Courier New', monospace;
-        font-size: 12px;
-        z-index: 0;
-        pointer-events: none;
-        white-space: pre;
-        opacity: 0.6;
-        line-height: 1.4;
-      }
        
        .morse-canvas {
          position: fixed;
@@ -97,8 +78,13 @@
     </style>
 </head>
 <body>
-    <code><pre>[ SPACE ] beep</pre></code>
-    <div class="morse-legend">
+    <code><pre>
+[ SPACE ] beep
+[ . ] dit
+[ - ] dah
+
+
+
 -----------------------------------------------------------
 | A             .-                  U             ..-     |
 | B             -...                V             ...-    |
@@ -121,7 +107,7 @@
 | S             ...                 ?             ..--..  |
 | T             -                   /             -..-.   |
 -----------------------------------------------------------
-    </div>
+    </pre></code>
 
     <div class="user-list" id="userList">
       <!-- User list will be populated here -->
@@ -507,12 +493,27 @@
        
 
       const SPACE = 'Space'
+      const DIT_KEY = 'Period' // . key
+      const DAH_KEY = 'Minus' // - key
+      const DIT_DURATION = 60 // milliseconds
+      const DAH_DURATION = 180 // milliseconds (3x dit)
+
+      let ditTimeout = null
+      let dahTimeout = null
+      let ditActive = false
+      let dahActive = false
 
       // Space bar behavior based on current mode
       document.addEventListener('keydown', function (event) {
-        if (event.code === SPACE) {
+        if (event.code === SPACE && !event.repeat) {
           event.preventDefault() // Prevent default space bar behavior (page scrolling)
           handleSpacePress()
+        } else if (event.code === DIT_KEY && !event.repeat && !ditActive) {
+          event.preventDefault()
+          handleDitPress()
+        } else if (event.code === DAH_KEY && !event.repeat && !dahActive) {
+          event.preventDefault()
+          handleDahPress()
         }
       })
 
@@ -582,6 +583,68 @@
          // Stop all effects
          stopBackgroundColor()
          stopAudio(currentUserId)
+       }
+
+       function handleDitPress() {
+         // Fire and forget - ignore if already active
+         if (ditActive) return
+
+         ditActive = true
+
+         // Send WebSocket message for dit press
+         sendWebSocketMessage(1)
+
+         // Update current user's morse visualization
+         if (currentUserId) {
+           updateUserMorse(currentUserId, true)
+         }
+
+         // Effects: background + audio
+         startBackgroundColor()
+         startAudio(currentUserId)
+
+         // Auto-release after DIT_DURATION
+         ditTimeout = setTimeout(() => {
+           sendWebSocketMessage(0)
+           if (currentUserId) {
+             updateUserMorse(currentUserId, false)
+           }
+           stopBackgroundColor()
+           stopAudio(currentUserId)
+           ditTimeout = null
+           ditActive = false
+         }, DIT_DURATION)
+       }
+
+       function handleDahPress() {
+         // Fire and forget - ignore if already active
+         if (dahActive) return
+
+         dahActive = true
+
+         // Send WebSocket message for dah press
+         sendWebSocketMessage(1)
+
+         // Update current user's morse visualization
+         if (currentUserId) {
+           updateUserMorse(currentUserId, true)
+         }
+
+         // Effects: background + audio
+         startBackgroundColor()
+         startAudio(currentUserId)
+
+         // Auto-release after DAH_DURATION
+         dahTimeout = setTimeout(() => {
+           sendWebSocketMessage(0)
+           if (currentUserId) {
+             updateUserMorse(currentUserId, false)
+           }
+           stopBackgroundColor()
+           stopAudio(currentUserId)
+           dahTimeout = null
+           dahActive = false
+         }, DAH_DURATION)
        }
     </script>
 </body>
